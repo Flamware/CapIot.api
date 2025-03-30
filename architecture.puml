@@ -1,0 +1,78 @@
+@startuml
+' Set left to right direction for overall layout
+left to right direction
+
+skinparam componentStyle uml2
+skinparam nodePadding 20
+skinparam componentPadding 5
+skinparam classAttributeIconSize 0
+skinparam nodeMargin 50
+skinparam padding 5
+skinparam lineThickness 1
+skinparam backgroundColor #EEEBD
+
+' Nodes and components
+node "Client" {
+  component "FrontEnd (Web/Mobile)" as FE
+}
+
+cloud "Auth0 (Token Provider)" as Auth0{
+
+}
+
+node "Google VPS Provider" {
+  component "API Backend" as API_Backend
+  component "API InfluxDB" as API_InfluxDB
+
+  node "Databases" {
+    database "MongoDB (User/Site Data)" as MongoDB
+    database "InfluxDB (Time-Series Data)" as InfluxDB
+  }
+}
+
+' Fleet of STM32s node placed explicitly to the right of "API InfluxDB"
+node "Fleet of STM32s" {
+  component "STM32 Device" as STM32
+}
+
+' Relationships
+FE -> Auth0 : "Tok/Req"
+FE ---> API_Backend
+FE ---> API_InfluxDB
+
+API_Backend -down-> Auth0 : "Tok/Verif"
+API_Backend --> MongoDB : "Store/Retrieve Data"
+
+API_InfluxDB -> Auth0 : "Tok/Verif"
+API_InfluxDB --> InfluxDB : "Store/Retrieve Data"
+
+STM32 -> Auth0 : "Tok/Req"
+STM32 ---> API_InfluxDB
+STM32 ---> API_Backend : "? plage de fonctionnement via websocket ?"
+
+' Add notes for better understanding
+note right of API_Backend
+  1. Token Verification with Auth0
+  2. Role-Based Access Control (RBAC)
+  3. Manages User/Device Data
+end note
+
+note right of API_InfluxDB
+  1. Token Verification with Auth0
+  2. Handles Time-Series Data
+  3. Stores in InfluxDB
+end note
+
+note right of STM32
+  1. Requests JWT from Auth0
+  2. Sends Authenticated Data
+end note
+
+' Note for the relationship between API Backend and STM32 Device
+note left of API_Backend
+  1. Retrieves operation schedule
+  2. Updates the device status
+  3. WebSocket or API Polling
+end note
+
+@enduml

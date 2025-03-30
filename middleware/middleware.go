@@ -20,11 +20,10 @@ type Auth0UserIDKey struct{}
 
 // EnsureValidToken is a middleware function to validate JWT tokens.
 func EnsureValidToken() func(next http.Handler) http.Handler {
-	issuerURL, err := url.Parse(os.Getenv("AUTH0_DOMAIN"))
+	issuerURL, err := url.Parse("https://" + os.Getenv("AUTH0_DOMAIN") + "/")
 	if err != nil {
 		log.Fatalf("Failed to parse the issuer URL: %v", err)
 	}
-
 	provider := jwks.NewCachingProvider(issuerURL, 5*time.Minute)
 
 	jwtValidator, err := validator.New(
@@ -68,7 +67,7 @@ func EnsureValidToken() func(next http.Handler) http.Handler {
 }
 
 // RequireRole ensures the user has the specified role
-func RequireRole(requiredRole, managementToken, auth0Domain string) func(next http.Handler) http.Handler {
+func RequireRole(requiredRole string) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Get Auth0 user ID from context

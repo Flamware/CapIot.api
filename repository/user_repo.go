@@ -1,16 +1,18 @@
 package repository
 
+// This package handle database interaction
+
 import (
 	"api.cap.iot/config"
 	"api.cap.iot/models"
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // GetAllUsers retrieves all users
@@ -63,28 +65,11 @@ func CreateUser(user *models.User, managementToken, auth0Domain string) error {
 	return err
 }
 
-// UpdateUserRoles updates a user's roles in the database
-func UpdateUserRoles(auth0ID, managementToken, auth0Domain string) error {
-	roles, err := fetchRolesFromAuth0(auth0ID, managementToken, auth0Domain)
-	if err != nil {
-		return err
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	collection := config.GetCollection("users")
-	filter := bson.M{"auth0Id": auth0ID}
-	update := bson.M{"$set": bson.M{"roles": roles}}
-	opts := options.Update().SetUpsert(true) // Create if not exists
-	_, err = collection.UpdateOne(ctx, filter, update, opts)
-	return err
-}
-
 // fetchRolesFromAuth0 retrieves roles from Auth0 Management API
 func fetchRolesFromAuth0(auth0ID, managementToken, auth0Domain string) ([]string, error) {
 	client := &http.Client{Timeout: 10 * time.Second}
-	url := auth0Domain + "/api/v2/users/" + auth0ID + "/roles"
+	url := "https://" + auth0Domain + "/api/v2/users/" + auth0ID + "/roles"
+	log.Println(url)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -92,6 +77,7 @@ func fetchRolesFromAuth0(auth0ID, managementToken, auth0Domain string) ([]string
 	}
 	req.Header.Set("Authorization", "Bearer "+managementToken)
 
+	log.Println("fetching role")
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -113,5 +99,7 @@ func fetchRolesFromAuth0(auth0ID, managementToken, auth0Domain string) ([]string
 	for i, role := range roles {
 		roleNames[i] = role.Name
 	}
+
+	log.Printf("Roles: %v", roleNames) // Print the roles
 	return roleNames, nil
 }

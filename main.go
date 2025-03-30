@@ -2,17 +2,23 @@ package main
 
 import (
 	"api.cap.iot/config"
-	"api.cap.iot/middleware"
-	"api.cap.iot/models"
-	"api.cap.iot/repository"
+	"api.cap.iot/route"
 	"encoding/json"
+	"fmt"
 	"github.com/joho/godotenv"
 	"github.com/rs/cors"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
 	"strings"
+	"time"
 )
+
+type TokenInfo struct {
+	Token  string `json:"token"`
+	Expiry string `json:"expiry"`
+}
 
 func main() {
 	// Load environment variables
@@ -28,29 +34,90 @@ func main() {
 	// Auth0 Configuration
 	auth0Domain := os.Getenv("AUTH0_DOMAIN")
 	auth0Audience := os.Getenv("AUTH0_AUDIENCE")
-	managementToken := os.Getenv("AUTH0_MANAGEMENT_TOKEN")
+	clientID := os.Getenv("AUTH0_CLIENT_ID")
+	clientSecret := os.Getenv("AUTH0_CLIENT_SECRET")
+	tokenInfoJSON := os.Getenv("TOKEN_INFO")
 
-	if auth0Domain == "" || auth0Audience == "" || managementToken == "" {
+	var tokenInfo TokenInfo
+	if tokenInfoJSON != "" {
+		err = json.Unmarshal([]byte(tokenInfoJSON), &tokenInfo)
+		if err != nil {
+			log.Fatalf("❌ Failed to parse token info: %v", err)
+		}
+	}
+
+	// Check if the token is expired
+	if tokenInfo.Token == "" || isTokenExpired(tokenInfo.Expiry) {
+		urlStr := "https://" + auth0Domain + "/oauth/token"
+
+		payload := strings.NewReader(fmt.Sprintf("grant_type=client_credentials&client_id=%s&client_secret=%s&audience=https://%s/api/v2/",
+			clientID, clientSecret, auth0Domain))
+
+		req, err := http.NewRequest("POST", urlStr, payload)
+		if err != nil {
+			log.Fatalf("❌ Failed to create request: %v", err)
+		}
+
+		req.Header.Add("content-type", "application/x-www-form-urlencoded")
+
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			log.Fatalf("❌ Failed to send request: %v", err)
+		}
+
+		defer res.Body.Close()
+		body, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			log.Fatalf("❌ Failed to read response body: %v", err)
+		}
+
+		log.Println(res)
+		log.Println(string(body))
+
+		// Unmarshal the response body
+		var tokenResponse map[string]interface{}
+		err = json.Unmarshal(body, &tokenResponse)
+		if err != nil {
+			log.Fatalf("❌ Failed to parse token response: %v", err)
+		}
+
+		// Check for access_token in the response
+		managementToken, ok := tokenResponse["access_token"].(string)
+		if !ok || managementToken == "" {
+			log.Fatal("❌ Failed to retrieve management token")
+		} else {
+			log.Println("✅ Management token retrieved successfully")
+			// Calculate token expiry time (assuming token is valid for 24 hours)
+			expiryTime := time.Now().Add(24 * time.Hour).Format(time.RFC3339)
+			tokenInfo = TokenInfo{
+				Token:  managementToken,
+				Expiry: expiryTime,
+			}
+			// Marshal the token info to JSON and store it in the .env file
+			tokenInfoBytes, err := json.Marshal(tokenInfo)
+			if err != nil {
+				log.Fatalf("❌ Failed to marshal token info: %v", err)
+			}
+			f, err := os.OpenFile(".env", os.O_APPEND|os.O_WRONLY, 0600)
+			if err != nil {
+				log.Fatalf("❌ Failed to open .env file: %v", err)
+			}
+			defer f.Close()
+
+			if _, err = f.WriteString(fmt.Sprintf("\nTOKEN_INFO=%s", string(tokenInfoBytes))); err != nil {
+				log.Fatalf("❌ Failed to write token info to .env file: %v", err)
+			}
+		}
+	} else {
+		log.Println("✅ Using existing management token")
+	}
+
+	// Ensure necessary environment variables are set
+	if auth0Domain == "" || auth0Audience == "" {
 		log.Fatal("❌ AUTH0_DOMAIN, AUTH0_AUDIENCE, or AUTH0_MANAGEMENT_TOKEN is missing")
 	}
 
-	// Initialize routes
-	mux := http.NewServeMux()
-
-	// Public endpoint
-	mux.HandleFunc("/api/public", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]string{"message": "This is a public endpoint"})
-	})
-
-	// Protected callback endpoint with JWT validation and user creation
-	mux.Handle("/api/callback", middleware.EnsureValidToken()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		callbackHandler(w, r, managementToken, auth0Domain)
-	})))
-
-	// Admin-only endpoint
-	mux.Handle("/api/admin", middleware.EnsureValidToken()(middleware.RequireRole("admin", managementToken, auth0Domain)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]string{"message": "Welcome, admin!"})
-	}))))
+	mux := route.SetupRouter()
 
 	// CORS setup
 	c := cors.New(cors.Options{
@@ -69,38 +136,10 @@ func main() {
 	}
 }
 
-// callbackHandler handles requests and syncs user data
-func callbackHandler(w http.ResponseWriter, r *http.Request, managementToken, auth0Domain string) {
-	// Extract Auth0 User ID from context
-	auth0UserID, ok := r.Context().Value(middleware.Auth0UserIDKey{}).(string)
-	if !ok {
-		log.Println("Could not get Auth0 user ID from context")
-		http.Error(w, "Invalid token", http.StatusUnauthorized)
-		return
-	}
-
-	log.Printf("Authenticated user ID: %s", auth0UserID)
-
-	// Check if user exists in the database
-	user, err := repository.GetUserByAuth0ID(auth0UserID)
+func isTokenExpired(expiry string) bool {
+	expiryTime, err := time.Parse(time.RFC3339, expiry)
 	if err != nil {
-		// If user does not exist, create a new user with roles
-		newUser := models.NewUser(auth0UserID)
-		err = repository.CreateUser(newUser, managementToken, auth0Domain)
-		if err != nil {
-			log.Printf("Failed to create user: %v", err)
-			http.Error(w, "Failed to create user", http.StatusInternalServerError)
-			return
-		}
-		log.Println("New user created:", newUser)
-		user = newUser
+		log.Fatalf("❌ Failed to parse token expiry time: %v", err)
 	}
-
-	// Send response
-	response := map[string]string{
-		"message": "Hello from a private endpoint! You need to be authenticated to see this.",
-		"roles":   strings.Join(user.Roles, ", "),
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	return time.Now().After(expiryTime)
 }
