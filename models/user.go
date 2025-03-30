@@ -6,16 +6,21 @@ import (
 
 // User represents a user in the system
 type User struct {
-	Auth0ID   string    `bson:"auth0Id" json:"auth0Id"`
-	Roles     []string  `bson:"roles" json:"roles"` // Add this field
-	CreatedAt time.Time `bson:"createdAt" json:"createdAt"`
+	ID        int       `json:"id"`        // ID from the database
+	Email     string    `json:"email"`     // Email of the user
+	Name      string    `json:"Name"`      // Email of the user
+	Password  string    `json:"password"`  // Password of the user (it should be hashed before storing)
+	Role      string    `json:"roles"`     // List of roles assigned to the user
+	CreatedAt time.Time `json:"createdAt"` // Timestamp for when the user was created
 }
 
-// NewUser creates a new User instance with the provided Auth0ID, Email, and Name
-func NewUser(auth0ID string) *User {
+// NewUser creates a new User instance with the provided Auth0ID and Email
+func NewUser(auth0ID, email, password string, role string) *User {
 	now := time.Now()
 	return &User{
-		Auth0ID:   auth0ID, // Set from Auth0 'sub' claim
-		CreatedAt: now,     // Set to current time
+		Email:     email,    // Set the email
+		Password:  password, // Set the user's password
+		Role:      role,     // Set the user's roles
+		CreatedAt: now,      // Set the current timestamp for user creation
 	}
 }

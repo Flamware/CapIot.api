@@ -1,0 +1,18 @@
+@startuml
+
+    participant User
+    participant Frontend
+    participant Backend
+    participant Auth0
+    participant PostgreSQL
+
+    User->>Frontend: Remplit formulaire d'inscription
+    Frontend->>Backend: POST /register (email, password, etc.)
+    Backend->>Auth0: Crée un utilisateur
+    Auth0->>Backend: Retourne ID utilisateur
+    Backend->>PostgreSQL: Stocke infos utilisateur
+    Backend->>Backend: Génère JWT custom
+    Backend->>Frontend: Retourne JWT custom
+    Frontend->>User: Connexion réussie
+
+@enduml

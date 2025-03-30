@@ -1,12 +1,12 @@
 package route
 
 import (
-	"api.cap.iot/middleware"
+	"api.cap.iot/service"
 	"net/http"
 )
 
 // SetupRouter initializes the routes for the application
-func SetupRouter() *http.ServeMux {
+func SetupRouter(authService *service.AuthService) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	// Public endpoint
@@ -14,12 +14,8 @@ func SetupRouter() *http.ServeMux {
 		w.Write([]byte("This is a public endpoint"))
 	})
 
-	// Admin-only endpoint
-	mux.Handle("/admin", middleware.RequireRole("admin")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("Welcome, admin!"))
-	})))
-
-	SetupUserRoutes(mux)
+	// Setup user routes with the AuthRepository passed in
+	SetupAuthRoutes(mux, authService)
 	SetupLocationRoutes(mux)
 
 	return mux

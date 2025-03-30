@@ -1,0 +1,15 @@
+@startuml
+
+    participant User
+    participant Frontend
+    participant Backend
+    participant Auth0
+
+    User->>Frontend: Login (email/password)
+    Frontend->>Backend: Envoie les credentials
+    Backend->>Auth0: Vérifie l’authentification (OIDC/OAuth2)
+    Auth0->>Backend: Renvoie un Token Auth0
+    Backend->>Backend: Génère un JWT custom
+    Backend->>Frontend: Renvoie le JWT custom
+    Frontend->>User: Stocke et utilise le JWT pour les requêtes API
+@enduml
