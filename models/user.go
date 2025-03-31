@@ -14,7 +14,7 @@ type User struct {
 	CreatedAt time.Time `json:"createdAt"` // Timestamp for when the user was created
 }
 
-// NewUser creates a new User instance with the provided Auth0ID and Email
+// NewUser creates a new User instance with the provided and Email
 func NewUser(auth0ID, email, password string, role string) *User {
 	now := time.Now()
 	return &User{

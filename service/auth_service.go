@@ -4,8 +4,6 @@ import (
 	"api.cap.iot/models"
 	"api.cap.iot/repository"
 	"api.cap.iot/utils"
-	"database/sql"
-	"errors"
 	"fmt"
 	"github.com/golang-jwt/jwt/v5"
 	"log"
@@ -68,9 +66,9 @@ func ValidateJWT(tokenStr string) (*Claims, error) {
 
 	return claims, nil
 }
+
 func (s *AuthService) Login(email, password string) (string, error) {
 	// Step 1: Authenticate with Auth0
-	// Authenticate with Auth0 but we won't use Auth0ID
 	_, err := s.authRepo.AuthenticateWithAuth0(email, password)
 	if err != nil {
 		return "", err
@@ -79,27 +77,28 @@ func (s *AuthService) Login(email, password string) (string, error) {
 	// Step 2: Check if user exists in the database
 	user, err := s.userRepo.GetUserByEmail(email)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			// If user does not exist, create a new user
-			log.Printf("User with email %s not found, creating new user.", email)
+		// If there is any error other than sql.ErrNoRows, return it
+		return "", fmt.Errorf("failed to check user existence: %w", err)
+	}
 
-			// Create a new user with only the email (no Auth0ID)
-			newUser := &models.User{
-				Email: email, // Only store email
-				// Optionally, you can also add 'role' or 'password' here if needed
-			}
+	// Check if the user is nil, meaning the user does not exist in the database
+	if user == nil {
+		log.Printf("User with email %s not found, creating new user.", email)
 
-			// Attempt to create the user in the database
-			email, err := s.userRepo.CreateUser(newUser)
-			if err != nil {
-				return "", fmt.Errorf("failed to create user: %w", err)
-			}
-
-			// Log the creation of the user (email is the only info we're storing)
-			log.Printf("New user created with email: %s", email)
-		} else {
-			return "", fmt.Errorf("failed to check user existence: %w", err)
+		// Create a new user with only the email (no Auth0ID)
+		newUser := &models.User{
+			Email: email, // Only store email
+			// Optionally, you can also add 'role' or 'password' here if needed
 		}
+
+		// Attempt to create the user in the database
+		createdUser, err := s.userRepo.CreateUser(newUser)
+		if err != nil {
+			return "", fmt.Errorf("failed to create user: %w", err)
+		}
+
+		// Log the creation of the user (email is the only info we're storing)
+		log.Printf("New user created with email: %s", createdUser)
 	} else {
 		// Log if user is found in the database
 		log.Printf("User found in the database: %+v", user)
