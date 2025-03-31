@@ -16,18 +16,21 @@ node "Client" {
   component "FrontEnd (Web/Mobile)" as FE
 }
 
-cloud "Auth0 (Token Provider)" as Auth0{
+cloud "Auth0 (Token Provider)" as Auth0 {
 
 }
 
 node "Google VPS Provider" {
-  component "API Backend" as API_Backend
   component "API InfluxDB" as API_InfluxDB
+  component "API Backend" as API_Backend
+  component "Token Verification Service" as TokenVerifier
 
   node "Databases" {
     database "MongoDB (User/Site Data)" as MongoDB
     database "InfluxDB (Time-Series Data)" as InfluxDB
   }
+
+  component "MQTT Broker" as MQTT_Broker
 }
 
 ' Fleet of STM32s node placed explicitly to the right of "API InfluxDB"
@@ -36,43 +39,50 @@ node "Fleet of STM32s" {
 }
 
 ' Relationships
-FE -> Auth0 : "Tok/Req"
-FE ---> API_Backend
-FE ---> API_InfluxDB
+FE ---> API_Backend : "token get/sent"
+FE ---> API_InfluxDB : "token sent"
 
-API_Backend -down-> Auth0 : "Tok/Verif"
+STM32 -> API_InfluxDB
+STM32 -> MQTT_Broker : "Publish data"
+
+API_Backend --> Auth0 : "Tok/Verif"
 API_Backend --> MongoDB : "Store/Retrieve Data"
 
-API_InfluxDB -> Auth0 : "Tok/Verif"
-API_InfluxDB --> InfluxDB : "Store/Retrieve Data"
+API_InfluxDB ---> InfluxDB : "Store/Retrieve Data"
 
-STM32 -> Auth0 : "Tok/Req"
-STM32 ---> API_InfluxDB
-STM32 ---> API_Backend : "? plage de fonctionnement via websocket ?"
+API_Backend --> MQTT_Broker : "Publish/Subscribe"
+
+API_Backend --> TokenVerifier : "Verify Token"
+API_InfluxDB --> TokenVerifier : "Verify Token"
+MQTT_Broker --> TokenVerifier : "Verify Token"
+FE --> MQTT_Broker : "token sent to publish"
 
 ' Add notes for better understanding
 note right of API_Backend
-  1. Token Verification with Auth0
-  2. Role-Based Access Control (RBAC)
-  3. Manages User/Device Data
+  1. Authentication with Auth0
+  2. Generation of a new Token
 end note
 
 note right of API_InfluxDB
-  1. Token Verification with Auth0
-  2. Handles Time-Series Data
-  3. Stores in InfluxDB
+  1. Token Verification via TokenVerifier
 end note
 
 note right of STM32
-  1. Requests JWT from Auth0
-  2. Sends Authenticated Data
+  1. Requests JWT from Auth0 (if needed)
+  2. Sends Authenticated Data via MQTT
 end note
 
 ' Note for the relationship between API Backend and STM32 Device
 note left of API_Backend
   1. Retrieves operation schedule
   2. Updates the device status
-  3. WebSocket or API Polling
+  3. Pub/Sub via MQTT
+end note
+
+note right of MQTT_Broker
+  1. Pub/Sub Broker
+  2. Decouples STM32 and API
+  3. Token Verification via TokenVerifier
 end note
 
 @enduml
