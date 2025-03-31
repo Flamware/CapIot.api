@@ -6,6 +6,7 @@ import (
 	"api.cap.iot/repository"
 	"api.cap.iot/route"
 	"api.cap.iot/service"
+	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq" // PostgreSQL driver
 	"github.com/rs/cors"
@@ -37,9 +38,25 @@ func main() {
 
 	// Initialize services
 	authService := service.NewAuthService(authRepo, userRepo)
+	deviceRepo := repository.NewPostgresDeviceRepository(db)
+	deviceService := service.NewDeviceService(deviceRepo)
+
+	// MQTT client.
+	mqttBroker := "tcp://localhost:1883"
+	opts := mqtt.NewClientOptions().
+		AddBroker(mqttBroker).
+		SetCleanSession(true).
+		SetUsername("admin").
+		SetPassword("admin")
+
+	client := mqtt.NewClient(opts)
+	if token := client.Connect(); token.Wait() && token.Error() != nil {
+		log.Fatalf("Error connecting to MQTT broker: %v", token.Error())
+	}
+	log.Println("Successfully connected to MQTT broker!")
 
 	// Set up the router with the service
-	mux := route.SetupRouter(authService)
+	mux := route.SetupRouter(authService, deviceService, client)
 
 	// CORS setup
 	c := cors.New(cors.Options{

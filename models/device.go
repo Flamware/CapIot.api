@@ -1,7 +1,9 @@
 package models
 
-// Device represents a device in the system
+import "time"
+
+// Device represents the simplified device data.
 type Device struct {
-	DeviceID   string `json:"device_id"`
-	LocationID string `json:"client_id"`
+	DeviceID  string    `json:"device_id"`
+	Timestamp time.Time `json:"timestamp"`
 }

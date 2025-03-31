@@ -1,12 +1,14 @@
 package route
 
 import (
-	"api.cap.iot/service"
 	"net/http"
+
+	"api.cap.iot/service" // Replace with your actual import path
+	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
 // SetupRouter initializes the routes for the application
-func SetupRouter(authService *service.AuthService) *http.ServeMux {
+func SetupRouter(authService *service.AuthService, deviceService *service.DefaultDeviceService, mqttClient mqtt.Client) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	// Public endpoint
@@ -14,9 +16,11 @@ func SetupRouter(authService *service.AuthService) *http.ServeMux {
 		w.Write([]byte("This is a public endpoint"))
 	})
 
-	// Setup user routes with the AuthRepository passed in
 	SetupAuthRoutes(mux, authService)
 	SetupLocationRoutes(mux)
+
+	// Setup MQTT routes (separate function)
+	SetupMQTTRoutes(mqttClient, deviceService) //Passing mqttClient as a parameter
 
 	return mux
 }
