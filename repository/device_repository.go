@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"api.cap.iot/dao"
 	"api.cap.iot/models"
 	"context"
 	"database/sql"
@@ -8,19 +9,17 @@ import (
 	"time"
 )
 
-type DeviceRepository interface {
-	InsertDevice(device models.Device) error
-	DeviceExists(deviceID string) (bool, error)
-}
-
+// PostgresDeviceRepository implements DeviceDAO using PostgreSQL.
 type PostgresDeviceRepository struct {
 	db *sql.DB
 }
 
-func NewPostgresDeviceRepository(db *sql.DB) *PostgresDeviceRepository {
+// NewPostgresDeviceRepository creates a new PostgresDeviceRepository.
+func NewPostgresDeviceRepository(db *sql.DB) dao.DeviceDAO {
 	return &PostgresDeviceRepository{db: db}
 }
 
+// InsertDevice inserts a device into the database.
 func (r *PostgresDeviceRepository) InsertDevice(device models.Device) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -35,6 +34,7 @@ func (r *PostgresDeviceRepository) InsertDevice(device models.Device) error {
 	return nil
 }
 
+// DeviceExists checks if a device exists in the database.
 func (r *PostgresDeviceRepository) DeviceExists(deviceID string) (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -47,4 +47,35 @@ func (r *PostgresDeviceRepository) DeviceExists(deviceID string) (bool, error) {
 		return false, err
 	}
 	return exists, nil
+}
+
+// GetAllDevices retrieves all devices from the database.
+func (r *PostgresDeviceRepository) GetAllDevices() ([]models.Device, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `SELECT device_id, timestamp FROM devices`
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		log.Printf("Error getting all devices: %v\n", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var devices []models.Device
+	for rows.Next() {
+		var device models.Device
+		if err := rows.Scan(&device.DeviceID, &device.Timestamp); err != nil {
+			log.Printf("Error scanning device row: %v\n", err)
+			return nil, err
+		}
+		devices = append(devices, device)
+	}
+
+	if err := rows.Err(); err != nil {
+		log.Printf("Error iterating device rows: %v\n", err)
+		return nil, err
+	}
+
+	return devices, nil
 }

@@ -1,42 +1,40 @@
 @startuml
-' Set left to right direction for overall layout
+' Kubernetes Scalable Architecture
 left to right direction
 
 skinparam componentStyle uml2
-skinparam nodePadding 20
-skinparam componentPadding 5
-skinparam classAttributeIconSize 0
-skinparam nodeMargin 50
-skinparam padding 5
-skinparam lineThickness 1
 skinparam backgroundColor #EEEBD
 
-' Nodes and components
-node "Client" {
-  component "FrontEnd (Web/Mobile)" as FE
+cloud "Kubernetes Cluster" {
+    node "Ingress Controller" {
+        component "Ingress" as Ingress
+    }
+
+    node "Namespace: IoT" {
+        node "Frontend" {
+            component "Frontend Pod" as FE
+        }
+
+        node "Backend Services" {
+            component "API Backend Deployment" as API_Backend
+            component "API InfluxDB Deployment" as API_InfluxDB
+            component "MQTT Broker Deployment" as MQTT_Broker
+        }
+
+        node "Databases" {
+            database "PostgreSQL StatefulSet" as PostgreSQL
+            database "InfluxDB StatefulSet" as InfluxDB
+        }
+    }
 }
 
-cloud "Auth0" as Auth0 {
-
-}
-
-node "Google VPS" {
-  component "API InfluxDB" as API_InfluxDB
-  component "API Backend" as API_Backend
-
-  node "Databases" {
-    database "PostgreSQL" as PostgreSQL
-    database "InfluxDB" as InfluxDB
-  }
-
-  component "MQTT Broker (Mosquitto)" as MQTT_Broker
-}
-
+cloud "Auth0" as Auth0
 node "STM32 Fleet" {
-  component "STM32 Device" as STM32
+    component "STM32 Device" as STM32
 }
 
 ' Relationships
+Ingress --> FE
 FE --> API_Backend : "Token get/send"
 FE --> API_InfluxDB : "Token send"
 
@@ -45,9 +43,7 @@ STM32 -> API_InfluxDB
 
 API_Backend --> Auth0 : "Token Verif."
 API_Backend --> PostgreSQL : "Data Storage"
-
 API_InfluxDB --> InfluxDB : "Time-Series"
-
 API_Backend --> MQTT_Broker : "Pub/Sub"
 
 ' Notes
