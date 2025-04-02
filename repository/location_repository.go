@@ -1,60 +1,82 @@
 package repository
 
 import (
-	"encoding/json"
-	"fmt"
-	"net/http"
-	"os"
+	"api.cap.iot/dao"
+	"api.cap.iot/models"
+	"context"
+	"database/sql"
+	"log"
 	"time"
 )
 
-// Location represents a location structure
-type Location struct {
-	Name string `json:"name"`
+// PostgresLocationRepository implements LocationDAO using PostgreSQL.
+type PostgresLocationRepository struct {
+	db *sql.DB
 }
 
-// GetAvailableLocations fetches available locations from the API gateway
-func GetAvailableLocations() ([]Location, error) {
-	// Get API gateway URL and other configurations from environment variables
-	apiGatewayURL := os.Getenv("API_GATEWAY_URL")
-	clientID := os.Getenv("API_GATWAY_CLIEND_ID")
-	clientSecret := os.Getenv("API_GATEWAY_CLIENT_SECRET")
-	audience := os.Getenv("API_GATEWAY_AUDIENCE")
+// NewPostgresLocationRepository creates a new PostgresLocationRepository.
+func NewPostgresLocationRepository(db *sql.DB) dao.LocationDAO {
+	return &PostgresLocationRepository{db: db}
+}
 
-	if apiGatewayURL == "" || clientID == "" || clientSecret == "" || audience == "" {
-		return nil, fmt.Errorf("one or more required environment variables are not set")
-	}
+// InsertLocation inserts a location into the database.
+func (r *PostgresLocationRepository) InsertLocation(location models.Location) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-	// Create a new HTTP client with a timeout
-	client := &http.Client{Timeout: 10 * time.Second}
-
-	// Create a new request
-	req, err := http.NewRequest("GET", apiGatewayURL+"/locations", nil)
+	query := `INSERT INTO locations (location_name, location_description) VALUES ($1, $2)`
+	_, err := r.db.ExecContext(ctx, query, location.Name, location.Description)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		log.Printf("Error inserting location into database: %v\n", err)
+		return err
 	}
+	log.Printf("Location %s inserted into database.\n", location.ID)
+	return nil
+}
 
-	// Set the necessary headers
-	req.Header.Set("Client-ID", clientID)
-	req.Header.Set("Client-Secret", clientSecret)
-	req.Header.Set("Audience", audience)
+// LocationExists checks if a location exists in the database.
+func (r *PostgresLocationRepository) LocationExists(ID int) (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second) // Reduce timeout if 5s is too long
+	defer cancel()
 
-	// Execute the request
-	resp, err := client.Do(req)
+	const query = `SELECT 1 FROM locations WHERE location_id = $1 LIMIT 1` // Use LIMIT 1 instead of EXISTS
+	var exists int
+	err := r.db.QueryRowContext(ctx, query, ID).Scan(&exists)
+	if err == sql.ErrNoRows {
+		return false, nil // Return false if no rows are found
+	} else if err != nil {
+		log.Printf("Error checking location existence: %v\n", err)
+		return false, err
+	}
+	return true, nil
+}
+
+// GetAllLocations retrieves all locations from the database.
+func (r *PostgresLocationRepository) GetAllLocations() ([]models.Location, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `SELECT location_id, location_name, location_description FROM locations`
+	rows, err := r.db.QueryContext(ctx, query)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute request: %w", err)
+		log.Printf("Error getting all locations: %v\n", err)
+		return nil, err
 	}
-	defer resp.Body.Close()
+	defer rows.Close()
 
-	// Check if the response status is OK
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	var locations []models.Location
+	for rows.Next() {
+		var location models.Location
+		if err := rows.Scan(&location.ID, &location.Name, &location.Description); err != nil {
+			log.Printf("Error scanning location row: %v\n", err)
+			return nil, err
+		}
+		locations = append(locations, location)
 	}
 
-	// Parse the response body
-	var locations []Location
-	if err := json.NewDecoder(resp.Body).Decode(&locations); err != nil {
-		return nil, fmt.Errorf("failed to decode response body: %w", err)
+	if err := rows.Err(); err != nil {
+		log.Printf("Error iterating location rows: %v\n", err)
+		return nil, err
 	}
 
 	return locations, nil

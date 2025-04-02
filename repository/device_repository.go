@@ -23,7 +23,6 @@ func NewPostgresDeviceRepository(db *sql.DB) dao.DeviceDAO {
 func (r *PostgresDeviceRepository) InsertDevice(device models.Device) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-
 	query := `INSERT INTO devices (device_id, timestamp) VALUES ($1, $2)`
 	_, err := r.db.ExecContext(ctx, query, device.DeviceID, device.Timestamp)
 	if err != nil {
@@ -78,4 +77,39 @@ func (r *PostgresDeviceRepository) GetAllDevices() ([]models.Device, error) {
 	}
 
 	return devices, nil
+}
+
+// IsDeviceAssigned checks if a device is already assigned to a location.
+func (r *PostgresDeviceRepository) IsDeviceAssigned(deviceID string) (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `SELECT EXISTS(SELECT 1 FROM device_location WHERE device_id = $1)`
+	var exists bool
+	err := r.db.QueryRowContext(ctx, query, deviceID).Scan(&exists)
+	if err != nil {
+		log.Printf("Error checking if device is assigned: %v\n", err)
+		return false, err
+	}
+	return exists, nil
+}
+
+// SetDeviceToLocation associates a device with a location in the database.
+func (r *PostgresDeviceRepository) SetDeviceToLocation(deviceID string, locationID int) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Prepare the query to insert the device-location assignment
+	query := `INSERT INTO device_location (device_id, location_id, assigned_at) 
+              VALUES ($1, $2, $3)`
+
+	// Execute the query
+	_, err := r.db.ExecContext(ctx, query, deviceID, locationID, time.Now())
+	if err != nil {
+		log.Printf("Error associating device %s with location %d: %v\n", deviceID, locationID, err)
+		return err
+	}
+
+	log.Printf("Device %s associated with location %d.\n", deviceID, locationID)
+	return nil
 }

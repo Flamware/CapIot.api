@@ -6,14 +6,11 @@ import (
 	"os"
 )
 
-// ValidateJWT validates a JWT token and returns the claims if the token is valid
-func ValidateJWT(tokenString string) (jwt.MapClaims, error) {
-	// Define a secret key to validate the token (this should be stored securely)
+// ValidateJWT validates a JWT token and returns a boolean indicating if the token is valid
+func ValidateJWT(tokenString string) (bool, error) {
 	secretKey := []byte(os.Getenv("JWT_SECRET_KEY"))
 
-	// Parse the token
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		// Ensure the token method is HMAC
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, errors.New("unexpected signing method")
 		}
@@ -21,13 +18,12 @@ func ValidateJWT(tokenString string) (jwt.MapClaims, error) {
 	})
 
 	if err != nil {
-		return nil, err
+		return false, err
 	}
 
-	// Extract the claims
-	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-		return claims, nil
+	if _, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+		return true, nil
 	}
 
-	return nil, errors.New("invalid token")
+	return false, errors.New("invalid token")
 }

@@ -8,7 +8,12 @@ import (
 )
 
 // SetupRouter initializes the routes for the application
-func SetupRouter(authService *service.AuthService, deviceService *service.DefaultDeviceService, mqttClient mqtt.Client) *http.ServeMux {
+func SetupRouter(
+	authService *service.AuthService,
+	deviceService *service.DefaultDeviceService,
+	locationService *service.DefaultLocationService,
+	userService *service.DefaultUserService,
+	mqttClient mqtt.Client) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	// Public endpoint
@@ -17,10 +22,10 @@ func SetupRouter(authService *service.AuthService, deviceService *service.Defaul
 	})
 
 	SetupAuthRoutes(mux, authService)
-	SetupLocationRoutes(mux)
-
-	// Setup MQTT routes (separate function)
-	SetupMQTTRoutes(mqttClient, deviceService) //Passing mqttClient as a parameter
+	SetupLocationRoutes(mux, locationService)
+	SetupDeviceRoute(mux, deviceService)
+	SetupUserRoutes(mux, userService)
+	SetupMQTTRoutes(mqttClient, deviceService)
 
 	return mux
 }

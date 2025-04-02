@@ -1,111 +1,68 @@
 package service
 
 import (
-	"api.cap.iot/models"
+	"api.cap.iot/dao"
 	"api.cap.iot/repository"
 	"api.cap.iot/utils"
 	"fmt"
 	"github.com/golang-jwt/jwt/v5"
 	"log"
-	"os"
-	"time"
 )
 
 // AuthService handles the business logic for user authentication
 type AuthService struct {
-	authRepo *repository.AuthRepository // Change this to a pointer
-	userRepo *repository.UserRepository // No change needed
+	authRepo *repository.AuthRepository
+	userRepo dao.UserDAO
 }
 
 // NewAuthService creates a new AuthService
-func NewAuthService(authRepo *repository.AuthRepository, userRepo *repository.UserRepository) *AuthService {
+func NewAuthService(authRepo *repository.AuthRepository, userRepo dao.UserDAO) *AuthService {
 	return &AuthService{
 		authRepo: authRepo,
 		userRepo: userRepo,
 	}
 }
 
-// Structure pour gérer les tokens JWT
+// Claims structure for managing JWT tokens
 type Claims struct {
 	UserID string `json:"user_id"`
 	Email  string `json:"email"`
 	jwt.RegisteredClaims
 }
 
-// Clé secrète pour signer nos JWT (à stocker dans une variable d'environnement)
-var jwtKey = []byte(os.Getenv("JWT_SECRET"))
-
-// Générer un JWT custom
-func GenerateJWT(userID, email string) (string, error) {
-	expirationTime := time.Now().Add(24 * time.Hour) // Expire en 24h
-
-	claims := &Claims{
-		UserID: userID,
-		Email:  email,
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(expirationTime),
-		},
-	}
-
-	// Création du token signé
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(jwtKey)
-}
-
-// Vérifier un JWT
-func ValidateJWT(tokenStr string) (*Claims, error) {
-	claims := &Claims{}
-
-	token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
-		return jwtKey, nil
-	})
-
-	if err != nil || !token.Valid {
-		return nil, err
-	}
-
-	return claims, nil
-}
-
 func (s *AuthService) Login(email, password string) (string, error) {
 	// Step 1: Authenticate with Auth0
-	_, err := s.authRepo.AuthenticateWithAuth0(email, password)
+	auth0ID, err, auth0Email := s.authRepo.AuthenticateWithAuth0(email, password)
 	if err != nil {
 		return "", err
 	}
 
 	// Step 2: Check if user exists in the database
-	user, err := s.userRepo.GetUserByEmail(email)
+	exists, err := s.userRepo.UserExists(auth0ID)
 	if err != nil {
 		// If there is any error other than sql.ErrNoRows, return it
 		return "", fmt.Errorf("failed to check user existence: %w", err)
 	}
 
-	// Check if the user is nil, meaning the user does not exist in the database
-	if user == nil {
+	// Check if the user does not exist in the database
+	if !exists {
 		log.Printf("User with email %s not found, creating new user.", email)
 
-		// Create a new user with only the email (no Auth0ID)
-		newUser := &models.User{
-			Email: email, // Only store email
-			// Optionally, you can also add 'role' or 'password' here if needed
-		}
-
-		// Attempt to create the user in the database
-		createdUser, err := s.userRepo.CreateUser(newUser)
+		// Create a new user with the Auth0 ID and email
+		err := s.userRepo.CreateUser(auth0ID, auth0Email)
 		if err != nil {
 			return "", fmt.Errorf("failed to create user: %w", err)
 		}
 
-		// Log the creation of the user (email is the only info we're storing)
-		log.Printf("New user created with email: %s", createdUser)
+		// Log the creation of the user
+		log.Printf("New user created with Auth0 ID: %s", auth0ID)
 	} else {
 		// Log if user is found in the database
-		log.Printf("User found in the database: %+v", user)
+		log.Printf("User found in the database: %s", auth0ID)
 	}
 
 	// Step 3: Generate the custom JWT token
-	customJWT, err := utils.GenerateCustomJWT(email)
+	customJWT, err := utils.GenerateCustomJWT(auth0Email)
 	if err != nil {
 		return "", err
 	}

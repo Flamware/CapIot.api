@@ -1,11 +1,7 @@
 package models
 
-import (
-	"container/list"
-)
-
-// Location represents a location with users and devices
 type Location struct {
-	userList   list.List
-	deviceList list.List
+	ID          int    `json:"id"`
+	Name        string `json:"location_name"`
+	Description string `json:"location_description"`
 }

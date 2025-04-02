@@ -2,7 +2,6 @@ package main
 
 import (
 	"api.cap.iot/config"
-	"api.cap.iot/dao"
 	"api.cap.iot/repository"
 	"api.cap.iot/route"
 	"api.cap.iot/service"
@@ -27,9 +26,9 @@ func main() {
 		log.Fatalf("❌ Failed to initialize database connection: %v", err)
 	}
 
-	// Initialize DAO and repositories
-	userDAO := dao.NewUserDAO(db)
-	userRepo := repository.NewUserRepository(userDAO)
+	userRepo := repository.NewPostgresUserRepository(db)
+	deviceRepo := repository.NewPostgresDeviceRepository(db)
+	locationRepo := repository.NewPostgresLocationRepository(db)
 
 	authRepo, err := repository.NewAuthRepository()
 	if err != nil {
@@ -38,8 +37,9 @@ func main() {
 
 	// Initialize services
 	authService := service.NewAuthService(authRepo, userRepo)
-	deviceRepo := repository.NewPostgresDeviceRepository(db)
 	deviceService := service.NewDeviceService(deviceRepo)
+	locationService := service.NewLocationService(locationRepo)
+	userService := service.NewUserService(userRepo)
 
 	// MQTT client.
 	mqttBroker := "tcp://localhost:1883"
@@ -56,7 +56,12 @@ func main() {
 	log.Println("Successfully connected to MQTT broker!")
 
 	// Set up the router with the service
-	mux := route.SetupRouter(authService, deviceService, client)
+	mux := route.SetupRouter(
+		authService,
+		deviceService,
+		locationService,
+		userService,
+		client)
 
 	// CORS setup
 	c := cors.New(cors.Options{

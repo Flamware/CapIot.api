@@ -1,16 +1,20 @@
 package models
 
-import "github.com/dgrijalva/jwt-go"
+import "github.com/golang-jwt/jwt/v5"
 
 // LoginRequest contains the data coming from the client for login
 type LoginRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
 }
+
+// Auth0UserInfo contains the Auth0 user information
 type Auth0UserInfo struct {
 	Sub string `json:"sub"` // This is the Auth0 user ID.
 	// Add other fields you need...
 }
+
+// Auth0TokenResponse contains the response from Auth0 token endpoint
 type Auth0TokenResponse struct {
 	AccessToken  string `json:"access_token"`
 	IDToken      string `json:"id_token"`
@@ -23,5 +27,5 @@ type Auth0TokenResponse struct {
 // JWTClaims represents the claims in our custom JWT
 type JWTClaims struct {
 	Email string `json:"email"`
-	jwt.StandardClaims
+	jwt.RegisteredClaims
 }

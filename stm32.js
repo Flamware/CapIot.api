@@ -12,7 +12,7 @@ const logger = winston.createLogger({
 
 // MQTT broker details
 const mqttBroker = 'tcp://localhost:1883';
-const deviceID = 'STM32-1234';
+const deviceID = 'STM32-1235';
 const configTopic = `config/device/${deviceID}`;
 const availableTopic = `devices/available/${deviceID}`; // Device specific availability topic
 

@@ -8,7 +8,7 @@ import (
 	"log"
 )
 
-func SetupMQTTRoutes(client mqtt.Client, service service.DeviceService) {
+func SetupMQTTRoutes(client mqtt.Client, service *service.DefaultDeviceService) {
 	topic := "devices/available/+"
 	if token := client.Subscribe(topic, 1, func(client mqtt.Client, msg mqtt.Message) {
 		log.Printf("Received message from topic: %s\n", msg.Topic())
@@ -19,7 +19,6 @@ func SetupMQTTRoutes(client mqtt.Client, service service.DeviceService) {
 			log.Printf("Error unmarshalling JSON: %v\n", err)
 			return
 		}
-
 		if err := service.CreateDevice(device); err != nil {
 			log.Printf("Error creating device: %v\n", err)
 		}

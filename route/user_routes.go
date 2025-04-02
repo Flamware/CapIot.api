@@ -1,10 +1,27 @@
 package route
 
-import "net/http"
+import (
+	"api.cap.iot/middleware"
+	"api.cap.iot/service"
+	"encoding/json"
+	"net/http"
+)
 
-func SetupUserRoutes(mux *http.ServeMux) {
+func SetupUserRoutes(mux *http.ServeMux, userService *service.DefaultUserService) {
 	// Example location endpoint
 	mux.HandleFunc("/bind-device/{deviceID}", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("This is a location endpoint"))
 	})
+
+	// Get users endpoint
+	mux.Handle("/users", middleware.JWTMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		users, err := userService.GetAllUsers()
+		if err != nil {
+			http.Error(w, "Failed to get users", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(users)
+	})))
 }
