@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/joho/godotenv"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -23,11 +22,6 @@ type AuthRepository struct {
 
 // NewAuthRepository creates a new AuthRepository
 func NewAuthRepository() (*AuthRepository, error) {
-	err := godotenv.Load()
-	if err != nil {
-		return nil, fmt.Errorf("❌ Error loading .env file")
-	}
-
 	auth0Domain := os.Getenv("AUTH0_DOMAIN")
 	clientID := os.Getenv("AUTH0_CLIENT_ID")
 	clientSecret := os.Getenv("AUTH0_CLIENT_SECRET")

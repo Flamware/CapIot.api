@@ -42,13 +42,12 @@ func main() {
 	userService := service.NewUserService(userRepo)
 
 	// MQTT client.
-	mqttBroker := "tcp://localhost:1883"
+	mqttBroker := "tcp://mqtt:1883" // Use the service name
 	opts := mqtt.NewClientOptions().
 		AddBroker(mqttBroker).
 		SetCleanSession(true).
 		SetUsername("admin").
 		SetPassword("admin")
-
 	client := mqtt.NewClient(opts)
 	if token := client.Connect(); token.Wait() && token.Error() != nil {
 		log.Fatalf("Error connecting to MQTT broker: %v", token.Error())
