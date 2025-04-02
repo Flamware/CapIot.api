@@ -1,6 +1,8 @@
 package dao
 
-import "CapIot-api/internal/models"
+import (
+	"CapIot-api/internal/models"
+)
 
 type LocationDAO interface {
 	InsertLocation(location models.Location) error

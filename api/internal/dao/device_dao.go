@@ -1,6 +1,8 @@
 package dao
 
-import "CapIot-api/internal/models"
+import (
+	"CapIot-api/internal/models"
+)
 
 // DeviceDAO defines the interface for device data access.
 type DeviceDAO interface {

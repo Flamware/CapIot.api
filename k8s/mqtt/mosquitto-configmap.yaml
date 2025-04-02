@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mosquitto-configmap
+  namespace: mqtt-namespace
+data:
+  mosquitto.conf: |
+    listener 1883
+    allow_anonymous true

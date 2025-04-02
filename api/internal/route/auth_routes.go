@@ -3,6 +3,7 @@ package route
 import (
 	"CapIot-api/internal/service"
 	"encoding/json"
+	"log"
 	"net/http"
 )
 
@@ -21,8 +22,12 @@ func SetupAuthRoutes(mux *http.ServeMux, authService *service.AuthService) {
 
 // LoginHandler handles login requests and delegates logic to AuthService
 func LoginHandler(w http.ResponseWriter, r *http.Request, authService *service.AuthService) {
+	// Log incoming requests for debugging
+	log.Printf("Received %s request for login", r.Method)
 
 	if r.Method != http.MethodPost {
+		// Log method not allowed error
+		log.Printf("Method %s not allowed for login", r.Method)
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -30,6 +35,8 @@ func LoginHandler(w http.ResponseWriter, r *http.Request, authService *service.A
 	// Decode the login request
 	var req LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		// Log decoding error
+		log.Printf("Failed to decode login request: %v", err)
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
@@ -37,6 +44,8 @@ func LoginHandler(w http.ResponseWriter, r *http.Request, authService *service.A
 	// Call AuthService to authenticate and generate JWT
 	token, err := authService.Login(req.Email, req.Password)
 	if err != nil {
+		// Log authentication error
+		log.Printf("Authentication failed for email %s: %v", req.Email, err)
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
@@ -44,5 +53,10 @@ func LoginHandler(w http.ResponseWriter, r *http.Request, authService *service.A
 	// Respond with the JWT
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"jwtToken": token})
+	response := map[string]string{"jwtToken": token}
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		// Log encoding error if the response fails to send
+		log.Printf("Failed to encode response: %v", err)
+		http.Error(w, "Failed to send response", http.StatusInternalServerError)
+	}
 }

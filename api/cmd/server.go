@@ -2,15 +2,16 @@ package main
 
 import (
 	"CapIot-api/internal/config"
-	"CapIot-api/internal/repository"
+	repository2 "CapIot-api/internal/repository"
 	"CapIot-api/internal/route"
-	"CapIot-api/internal/service"
+	service2 "CapIot-api/internal/service"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq" // PostgreSQL driver
 	"github.com/rs/cors"
 	"log"
 	"net/http"
+	"os"
 )
 
 func main() {
@@ -26,23 +27,27 @@ func main() {
 		log.Fatalf("❌ Failed to initialize database connection: %v", err)
 	}
 
-	userRepo := repository.NewPostgresUserRepository(db)
-	deviceRepo := repository.NewPostgresDeviceRepository(db)
-	locationRepo := repository.NewPostgresLocationRepository(db)
+	userRepo := repository2.NewPostgresUserRepository(db)
+	deviceRepo := repository2.NewPostgresDeviceRepository(db)
+	locationRepo := repository2.NewPostgresLocationRepository(db)
 
-	authRepo, err := repository.NewAuthRepository()
+	authRepo, err := repository2.NewAuthRepository()
 	if err != nil {
 		log.Fatalf("❌ Failed to initialize AuthRepository: %v", err)
 	}
 
 	// Initialize services
-	authService := service.NewAuthService(authRepo, userRepo)
-	deviceService := service.NewDeviceService(deviceRepo)
-	locationService := service.NewLocationService(locationRepo)
-	userService := service.NewUserService(userRepo)
+	authService := service2.NewAuthService(authRepo, userRepo)
+	deviceService := service2.NewDeviceService(deviceRepo)
+	locationService := service2.NewLocationService(locationRepo)
+	userService := service2.NewUserService(userRepo)
 
 	// MQTT client.
-	mqttBroker := "tcp://mqtt:1883" // Use the service name
+	mqttBroker := os.Getenv("MQTT_BROKER")
+	log.Println("MQTT_BROKER:" + mqttBroker)
+	if mqttBroker == "" {
+		mqttBroker = "tcp://mqtt:1883" // Default to local Mosquitto
+	}
 	opts := mqtt.NewClientOptions().
 		AddBroker(mqttBroker).
 		SetCleanSession(true).
@@ -64,12 +69,11 @@ func main() {
 
 	// CORS setup
 	c := cors.New(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:5173"},
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE"},
-		AllowedHeaders:   []string{"Content-Type", "Authorization"},
-		AllowCredentials: true,
+		AllowedOrigins:   []string{"*"},                                                                   // Allow all origins
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "CONNECT", "TRACE"}, // Allow all methods
+		AllowedHeaders:   []string{"*"},                                                                   // Allow all headers
+		AllowCredentials: true,                                                                            // If you need to allow credentials (cookies, auth headers, etc.)
 	})
-
 	// Wrap the mux with CORS handler
 	handler := c.Handler(mux)
 

@@ -1,6 +1,8 @@
 package dao
 
-import "CapIot-api/internal/models"
+import (
+	"CapIot-api/internal/models"
+)
 
 // UserDAO defines the interface for user data access.
 type UserDAO interface {

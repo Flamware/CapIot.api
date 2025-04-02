@@ -3,7 +3,6 @@ package repository
 import (
 	"CapIot-api/internal/dao"
 	"CapIot-api/internal/models"
-
 	"context"
 	"database/sql"
 	"log"
