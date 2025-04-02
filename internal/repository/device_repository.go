@@ -1,8 +1,8 @@
 package repository
 
 import (
-	"api.cap.iot/dao"
-	"api.cap.iot/models"
+	"CapIot-api/internal/dao"
+	"CapIot-api/internal/models"
 	"context"
 	"database/sql"
 	"log"

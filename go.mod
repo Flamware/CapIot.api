@@ -1,4 +1,4 @@
-module api.cap.iot
+module CapIot-api
 
 go 1.24.1
 

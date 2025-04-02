@@ -1,9 +1,9 @@
 package route
 
 import (
-	"api.cap.iot/middleware"
-	"api.cap.iot/models"
-	"api.cap.iot/service"
+	"CapIot-api/internal/middleware"
+	"CapIot-api/internal/models"
+	"CapIot-api/internal/service"
 	"encoding/json"
 	"net/http"
 )

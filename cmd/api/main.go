@@ -1,10 +1,10 @@
 package main
 
 import (
-	"api.cap.iot/config"
-	"api.cap.iot/repository"
-	"api.cap.iot/route"
-	"api.cap.iot/service"
+	"CapIot-api/internal/config"
+	"CapIot-api/internal/repository"
+	"CapIot-api/internal/route"
+	"CapIot-api/internal/service"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq" // PostgreSQL driver

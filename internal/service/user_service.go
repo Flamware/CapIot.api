@@ -1,8 +1,8 @@
 package service
 
 import (
-	"api.cap.iot/dao"
-	"api.cap.iot/models"
+	"CapIot-api/internal/dao"
+	"CapIot-api/internal/models"
 )
 
 type DefaultUserService struct {

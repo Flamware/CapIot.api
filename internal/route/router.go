@@ -1,9 +1,9 @@
 package route
 
 import (
+	"CapIot-api/internal/service"
 	"net/http"
 
-	"api.cap.iot/service" // Replace with your actual import path
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 

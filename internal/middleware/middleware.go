@@ -1,7 +1,7 @@
 package middleware
 
 import (
-	"api.cap.iot/auth"
+	"CapIot-api/internal/auth"
 	"context"
 	"net/http"
 	"strings"

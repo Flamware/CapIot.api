@@ -1,8 +1,8 @@
 package route
 
 import (
-	"api.cap.iot/models"
-	"api.cap.iot/service"
+	"CapIot-api/internal/models"
+	"CapIot-api/internal/service"
 	"encoding/json"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"log"

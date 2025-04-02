@@ -1,7 +1,7 @@
 package repository
 
 import (
-	"api.cap.iot/models"
+	"CapIot-api/internal/models"
 	"bytes"
 	"encoding/json"
 	"fmt"

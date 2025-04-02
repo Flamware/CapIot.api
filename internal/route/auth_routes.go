@@ -1,7 +1,7 @@
 package route
 
 import (
-	"api.cap.iot/service"
+	"CapIot-api/internal/service"
 	"encoding/json"
 	"net/http"
 )

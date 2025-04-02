@@ -1,9 +1,9 @@
 package service
 
 import (
-	"api.cap.iot/dao"
-	"api.cap.iot/repository"
-	"api.cap.iot/utils"
+	"CapIot-api/internal/dao"
+	"CapIot-api/internal/repository"
+	"CapIot-api/internal/utils"
 	"fmt"
 	"github.com/golang-jwt/jwt/v5"
 	"log"

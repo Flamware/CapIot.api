@@ -1,8 +1,8 @@
 package handlers
 
 import (
-	"api.cap.iot/models"
-	"api.cap.iot/service"
+	"CapIot-api/internal/models"
+	"CapIot-api/internal/service"
 	"encoding/json"
 	"fmt"
 	"net/http"
