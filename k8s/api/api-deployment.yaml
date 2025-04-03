@@ -17,7 +17,7 @@ spec:
         - name: regcred
       containers:
         - name: api
-          image: flamware/capiot-api:latest # Ensure this is correct
+          image: flamware/capiot-api:latest
           imagePullPolicy: Always
           envFrom:
             - secretRef:
@@ -25,7 +25,7 @@ spec:
             - configMapRef:
                 name: api-configmap
           ports:
-            - containerPort: 8080
+            - containerPort: 8080  # Matches Service port
           livenessProbe:
             httpGet:
               path: /health
