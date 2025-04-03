@@ -13,8 +13,6 @@ spec:
       labels:
         app: api
     spec:
-      imagePullSecrets:
-        - name: regcred
       containers:
         - name: api
           image: flamware/capiot-api:latest
