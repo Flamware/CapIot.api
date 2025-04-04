@@ -31,8 +31,8 @@ jobs:
       - name: Build and push Docker image
         id: docker_build
         run: |
-          pwd 
-          cd capiot-api/api
+          pwd # Print current directory before cd
+          cd api # Corrected cd command
           pwd # Print current directory after cd
           IMAGE_TAG=$(date +%Y%m%d%H%M%S)-${GITHUB_SHA::8}
           docker build --tag flamware/capiot-api:$IMAGE_TAG -f api/Dockerfile .
