@@ -33,8 +33,8 @@ jobs:
         run: |
           cd api # Navigate to the api directory
           IMAGE_TAG=$(date +%Y%m%d%H%M%S)-${GITHUB_SHA::8}
-          docker build --push --no-cache -f api/Dockerfile .
-          echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
+          docker build --tag flamware/capiot-api:$IMAGE_TAG -f api/Dockerfile .
+          docker push flamware/capiot-api:$IMAGE_TAG 
 
       - name: Set up kubectl
         uses: azure/setup-kubectl@v3
