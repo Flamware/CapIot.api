@@ -17,18 +17,18 @@ func SetupRouter(
 	mux := http.NewServeMux()
 
 	// Public endpoint
-	mux.HandleFunc("/public", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/public", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("This is a public endpoint"))
 	})
 
 	// Health check endpoint
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	})
 
 	// Readiness check endpoint
-	mux.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/ready", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	})

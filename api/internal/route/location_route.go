@@ -10,7 +10,7 @@ import (
 
 // SetupLocationRoutes initializes the location-related routes
 func SetupLocationRoutes(mux *http.ServeMux, locationService service.LocationService) {
-	mux.Handle("/locations", middleware.JWTMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/api/locations", middleware.JWTMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -29,7 +29,7 @@ func SetupLocationRoutes(mux *http.ServeMux, locationService service.LocationSer
 		}
 	})))
 
-	mux.Handle("/location/create", middleware.JWTMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/api/location/create", middleware.JWTMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return

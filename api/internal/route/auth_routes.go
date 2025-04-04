@@ -15,7 +15,7 @@ type LoginRequest struct {
 
 // SetupAuthRoutes initializes the authentication routes
 func SetupAuthRoutes(mux *http.ServeMux, authService *service.AuthService) {
-	mux.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/login", func(w http.ResponseWriter, r *http.Request) {
 		LoginHandler(w, r, authService)
 	})
 }

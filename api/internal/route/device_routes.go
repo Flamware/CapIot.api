@@ -9,7 +9,7 @@ import (
 
 // SetupDeviceRoute initializes the device-related routes
 func SetupDeviceRoute(mux *http.ServeMux, deviceService *service.DefaultDeviceService) {
-	mux.Handle("/devices", middleware.JWTMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/api/devices", middleware.JWTMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -23,7 +23,7 @@ func SetupDeviceRoute(mux *http.ServeMux, deviceService *service.DefaultDeviceSe
 		json.NewEncoder(w).Encode(devices)
 	})))
 
-	mux.Handle("/assign-device", middleware.JWTMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/api/assign-device", middleware.JWTMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
