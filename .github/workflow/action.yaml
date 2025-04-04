@@ -3,7 +3,7 @@ name: Deploy API to Google Cloud Kubernetes
 on:
   push:
     branches:
-      - api-main # Or whatever branch triggers API deployments
+      - main
   workflow_dispatch:
 
 jobs:
