@@ -1,4 +1,4 @@
-name: Deploy API to Google Cloud Kubernetes
+name: Deploy API to Google Cloud
 
 on:
   push:
