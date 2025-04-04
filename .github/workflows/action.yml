@@ -33,7 +33,7 @@ jobs:
       - name: Build and push Docker image
         id: docker_build
         run: |
-          cd capiot-api/api # Navigate to the api directory
+          cd /api # Navigate to the api directory
           IMAGE_TAG=$(date +%Y%m%d%H%M%S)-${GITHUB_SHA::8}
           docker build --push --no-cache \
             --tag flamware/capiot-api:$IMAGE_TAG \
