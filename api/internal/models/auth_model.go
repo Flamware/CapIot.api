@@ -1,5 +1,7 @@
 package models
 
+import "time"
+
 // LoginRequest contains the data coming from the client for login
 type LoginRequest struct {
 	Email    string `json:"email"`
@@ -20,4 +22,14 @@ type Auth0TokenResponse struct {
 	ExpiresIn    int    `json:"expires_in"`
 	RefreshToken string `json:"refresh_token"`
 	Scope        string `json:"scope"`
+}
+type TokenData struct {
+	Token     string    `json:"access_token"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
+// AuthResult holds the Auth0 authentication result.
+type AuthResult struct {
+	Auth0ID string
+	Email   string
 }

@@ -2,9 +2,10 @@ package main
 
 import (
 	"CapIot-api/internal/config"
-	repository2 "CapIot-api/internal/repository"
+	"CapIot-api/internal/handlers"
+	"CapIot-api/internal/repository"
 	"CapIot-api/internal/route"
-	service2 "CapIot-api/internal/service"
+	"CapIot-api/internal/service"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq" // PostgreSQL driver
@@ -15,7 +16,7 @@ import (
 )
 
 func main() {
-	// Load environment variabless
+	// Load environment variables
 	err := godotenv.Load()
 	if err != nil {
 		log.Println("No .env file found, relying on system environment variables")
@@ -27,22 +28,29 @@ func main() {
 		log.Fatalf("❌ Failed to initialize database connection: %v", err)
 	}
 
-	userRepo := repository2.NewPostgresUserRepository(db)
-	deviceRepo := repository2.NewPostgresDeviceRepository(db)
-	locationRepo := repository2.NewPostgresLocationRepository(db)
-
-	authRepo, err := repository2.NewAuthRepository()
+	authRepo, err := repository.NewAuthRepository()
 	if err != nil {
 		log.Fatalf("❌ Failed to initialize AuthRepository: %v", err)
 	}
 
-	// Initialize services
-	authService := service2.NewAuthService(authRepo, userRepo)
-	deviceService := service2.NewDeviceService(deviceRepo)
-	locationService := service2.NewLocationService(locationRepo)
-	userService := service2.NewUserService(userRepo)
+	userRepo := repository.NewPostgresUserRepository(db)
+	deviceRepo := repository.NewPostgresDeviceRepository(db)
+	locationRepo := repository.NewPostgresLocationRepository(db)
 
-	// MQTT client.
+	// Initialize services
+	authService := service.NewAuthService(authRepo, userRepo)
+	deviceService := service.NewDeviceService(deviceRepo)
+	locationService := service.NewLocationService(locationRepo)
+	userService := service.NewUserService(userRepo)
+
+	// Initialize handlers
+	authHandler := handlers.NewAuthHandler(authService)
+	deviceHandler := handlers.NewDeviceHandler(deviceService)
+	locationHandler := handlers.NewLocationHandler(locationService)
+	userHandler := handlers.NewUserHandler(userService)
+	mqttHandler := handlers.NewMqttHandler(deviceService) // Initialize MqttHandler
+
+	// MQTT client setup.
 	mqttBroker := os.Getenv("MQTT_BROKER")
 	log.Println("MQTT_BROKER:" + mqttBroker)
 	if mqttBroker == "" {
@@ -59,23 +67,24 @@ func main() {
 	}
 	log.Println("Successfully connected to MQTT broker!")
 
-	// Set up the router with the service
-	mux := route.SetupRouter(
-		authService,
-		deviceService,
-		locationService,
-		userService,
+	// Set up the router with the handlers and MQTT client
+	r := route.SetupRouter(
+		authHandler,
+		deviceHandler,
+		locationHandler,
+		userHandler,
+		mqttHandler,
 		client)
 
 	// CORS setup
 	c := cors.New(cors.Options{
-		AllowedOrigins:   []string{"*"},                                                                            // Allow all origins
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD", "CONNECT", "TRACE"}, // Allow all methods
-		AllowedHeaders:   []string{"*"},                                                                            // Allow all headers
-		AllowCredentials: true,                                                                                     // If you need to allow credentials (cookies, auth headers, etc.)
+		AllowedOrigins:   []string{"*"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD", "CONNECT", "TRACE"},
+		AllowedHeaders:   []string{"*"},
+		AllowCredentials: true,
 	})
-	// Wrap the mux with CORS handler
-	handler := c.Handler(mux)
+	// Wrap the router with CORS handler
+	handler := c.Handler(r) // Use the gorilla/mux router 'r'
 
 	// Start the server
 	log.Println("🚀 Starting server on :8080...")

@@ -12,16 +12,16 @@ type DefaultDeviceService struct {
 }
 
 type DeviceService interface {
-	CreateDevice(device models.Device) error
+	CreateDevice(device *models.Device) error
 	GetAllDevices() ([]models.Device, error)
-	SetDeviceToLocation(device_id string, location_id int) interface{}
+	SetDeviceToLocation(device_id string, location_id int) error // Should return error
 }
 
 func NewDeviceService(dao dao.DeviceDAO) *DefaultDeviceService {
 	return &DefaultDeviceService{dao: dao}
 }
 
-func (s *DefaultDeviceService) CreateDevice(device models.Device) error {
+func (s *DefaultDeviceService) CreateDevice(device *models.Device) error { // Accept a pointer
 	exists, err := s.dao.DeviceExists(device.DeviceID)
 	if err != nil {
 		return err
@@ -33,7 +33,7 @@ func (s *DefaultDeviceService) CreateDevice(device models.Device) error {
 	}
 
 	log.Printf("Creating device: %s", device.DeviceID)
-	return s.dao.InsertDevice(device)
+	return s.dao.InsertDevice(device) // Assuming your DAO InsertDevice also accepts *models.Device
 }
 
 func (s *DefaultDeviceService) GetAllDevices() ([]models.Device, error) {
