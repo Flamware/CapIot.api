@@ -15,11 +15,11 @@ func SetupUserRoutes(r *mux.Router, userHandler *handlers.UserHandler) {
 	})
 
 	// Get all users endpoint
-	r.Handle("/api/users", middleware.JWTMiddleware(http.HandlerFunc(userHandler.GetAllUsers))).Methods(http.MethodGet)
+	r.Handle("/api/users", middleware.JWTAuthMiddleware(http.HandlerFunc(userHandler.GetAllUsers))).Methods(http.MethodGet)
 
 	// Get current user
-	r.Handle("/api/users/me", middleware.JWTMiddleware(http.HandlerFunc(userHandler.GetCurrentUser))).Methods(http.MethodGet)
+	r.Handle("/api/users/me", middleware.JWTAuthMiddleware(http.HandlerFunc(userHandler.GetCurrentUser))).Methods(http.MethodGet)
 
 	// Update current user
-	r.Handle("/api/users/me", middleware.JWTMiddleware(http.HandlerFunc(userHandler.UpdateCurrentUser))).Methods(http.MethodPatch)
+	r.Handle("/api/users/me", middleware.JWTAuthMiddleware(http.HandlerFunc(userHandler.UpdateCurrentUser))).Methods(http.MethodPatch)
 }

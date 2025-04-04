@@ -74,6 +74,7 @@ func main() {
 		locationHandler,
 		userHandler,
 		mqttHandler,
+		authService,
 		client)
 
 	// CORS setup

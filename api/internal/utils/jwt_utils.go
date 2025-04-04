@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"CapIot-api/internal/models"
 	"fmt"
 	"github.com/dgrijalva/jwt-go"
 	"os"
@@ -8,7 +9,7 @@ import (
 )
 
 // GenerateCustomJWT generates a custom JWT token for the user
-func GenerateCustomJWT(email string, user_id int) (string, error) {
+func GenerateCustomJWT(Authresult *models.AuthResult, user_id int) (string, error) {
 	// Retrieve the secret key from environment variables
 	secretKey := os.Getenv("JWT_SECRET_KEY")
 	if secretKey == "" {
@@ -17,8 +18,10 @@ func GenerateCustomJWT(email string, user_id int) (string, error) {
 
 	// Create the JWT claims
 	claims := jwt.MapClaims{
-		"email": email,
+		"email": Authresult.Email,
+		"sub":   Authresult.Auth0ID,
 		"id":    user_id,
+		"role":  Authresult.Role,
 		"iat":   time.Now().Unix(),
 		"exp":   time.Now().Add(time.Hour * 24).Unix(), // Token expires in 24 hours
 	}

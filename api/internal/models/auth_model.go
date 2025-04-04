@@ -32,4 +32,5 @@ type TokenData struct {
 type AuthResult struct {
 	Auth0ID string
 	Email   string
+	Role    []string
 }

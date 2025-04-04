@@ -4,6 +4,7 @@ import (
 	"CapIot-api/internal/dao"
 	"CapIot-api/internal/repository"
 	"CapIot-api/internal/utils"
+	"context"
 	"fmt"
 	"github.com/golang-jwt/jwt/v5"
 	"log"
@@ -13,6 +14,7 @@ import (
 type AuthService interface {
 	Login(email, password string) (string, error)
 	Register(email, password string) error
+	GetUserRoles(ctx context.Context, userID string) ([]string, error)
 }
 
 // DefaultAuthService handles the business logic for user authentication
@@ -31,51 +33,48 @@ func NewAuthService(authRepo *repository.AuthRepository, userRepo dao.UserDAO) *
 
 // Claims structure for managing JWT tokens
 type Claims struct {
-	UserID int    `json:"user_id"`
-	Email  string `json:"email"`
+	UserID int      `json:"user_id"`
+	Email  string   `json:"email"`
+	Roles  []string `json:"roles"` // Include roles in the JWT
 	jwt.RegisteredClaims
 }
 
 func (s *DefaultAuthService) Login(email, password string) (string, error) {
-	// Step 1: Authenticate with Auth0
-
-	AuthResult, err := s.authRepo.AuthenticateWithAuth0(email, password)
+	// Step 1: Authenticate with Auth0 and get user info with roles
+	authResult, err := s.authRepo.AuthenticateWithAuth0(email, password)
 	if err != nil {
 		return "", err
 	}
 
 	// Step 2: Check if user exists in the database
-	userID, err := s.userRepo.UserExists(AuthResult.Auth0ID)
+	userID, err := s.userRepo.UserExists(authResult.Auth0ID)
 	if err != nil {
 		// If there is any error other than sql.ErrNoRows, return it
 		return "", fmt.Errorf("failed to check user existence: %w", err)
 	}
 
-	// Check user role
-	_, err = s.authRepo.GetUserRolesByAuth0ID(AuthResult.Auth0ID)
-	if err != nil {
-		return "", fmt.Errorf("failed to get user role: %w", err)
-	}
+	// Check user role (already done in AuthenticateWithAuth0)
+	log.Printf("User %s authenticated with roles: %v", authResult.Email, authResult.Role)
 
 	// Check if the user does not exist in the database
 	if userID == 0 {
 		log.Printf("User with email %s not found, creating new user.", email)
 
 		// Create a new user with the Auth0 ID and email
-		userID, err = s.userRepo.CreateUser(AuthResult.Auth0ID, AuthResult.Email)
+		userID, err = s.userRepo.CreateUser(authResult.Auth0ID, authResult.Email)
 		if err != nil {
 			return "", fmt.Errorf("failed to create user: %w", err)
 		}
 
 		// Log the creation of the user
-		log.Printf("New user created with Auth0 ID: %s and User ID: %d", AuthResult.Auth0ID, userID)
+		log.Printf("New user created with Auth0 ID: %s and User ID: %d", authResult.Auth0ID, userID)
 	} else {
 		// Log if user is found in the database
-		log.Printf("User found in the database: %s with User ID: %d", AuthResult.Auth0ID, userID)
+		log.Printf("User found in the database: %s with User ID: %d", authResult.Auth0ID, userID)
 	}
 
-	// Step 3: Generate the custom JWT token
-	customJWT, err := utils.GenerateCustomJWT(AuthResult.Email, userID)
+	// Step 3: Generate the custom JWT token, including roles
+	customJWT, err := utils.GenerateCustomJWT(authResult, userID)
 	if err != nil {
 		return "", err
 	}
@@ -101,6 +100,15 @@ func (s *DefaultAuthService) Register(email, password string) error {
 	log.Printf("User registered with Auth0 ID: %s and email: %s", auth0ID, email)
 
 	return nil
+}
+
+// GetUserRoles retrieves the roles of a user by their Auth0 User ID
+func (s *DefaultAuthService) GetUserRoles(ctx context.Context, auth0UserID string) ([]string, error) {
+	roles, err := s.authRepo.GetUserRolesByAuth0ID(auth0UserID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get roles for user %s: %w", auth0UserID, err)
+	}
+	return roles, nil
 }
 
 // Ensure DefaultAuthService implements the AuthService interface

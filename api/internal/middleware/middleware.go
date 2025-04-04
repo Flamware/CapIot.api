@@ -1,36 +1,113 @@
 package middleware
 
 import (
-	"CapIot-api/internal/auth"
+	"CapIot-api/internal/auth" // Assuming your JWT validation is here
+	"CapIot-api/internal/service"
 	"context"
+	"log"
 	"net/http"
 	"strings"
 )
 
-// Middleware de vérification du JWT
-func JWTMiddleware(next http.Handler) http.Handler {
+// UserContextKey is a key for storing user information in the request context.
+const UserContextKey = "auth0_id" // Changed to be more specific
+
+// RoleContextKey is a key for storing user roles in the request context.
+const RoleContextKey = "roles"
+
+// JWTAuthMiddleware verifies the JWT and adds the user ID to the context.
+func JWTAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.Println("JWTAuthMiddleware: Starting JWT authentication")
+
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
+			log.Println("JWTAuthMiddleware: Authorization header missing")
 			http.Error(w, "Authorization header missing", http.StatusUnauthorized)
 			return
 		}
+		log.Printf("JWTAuthMiddleware: Authorization header found: %s", authHeader)
 
-		// Extraire le token après "Bearer "
 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 		if tokenString == authHeader {
+			log.Printf("JWTAuthMiddleware: Invalid token format, missing 'Bearer ': %s", authHeader)
 			http.Error(w, "Invalid token format", http.StatusUnauthorized)
 			return
 		}
+		log.Printf("JWTAuthMiddleware: Extracted token string: %s", tokenString)
 
 		claims, err := auth.ValidateJWT(tokenString)
 		if err != nil {
+			log.Printf("JWTAuthMiddleware: Invalid token: %s, error: %v", tokenString, err)
 			http.Error(w, "Invalid token", http.StatusUnauthorized)
 			return
 		}
+		log.Printf("JWTAuthMiddleware: JWT validation successful, claims: %v", claims)
 
-		// Ajouter les claims au contexte de la requête
-		ctx := context.WithValue(r.Context(), "user", claims)
+		// Extract the Auth0 User ID from the "sub" claim
+		auth0UserID, ok := claims["sub"].(string)
+		if !ok {
+			log.Printf("JWTAuthMiddleware: Invalid Auth0 user identifier type in token claims: %v, expected string", claims["sub"])
+			http.Error(w, "Invalid user identifier in token", http.StatusUnauthorized)
+			return
+		}
+		log.Printf("JWTAuthMiddleware: Auth0 User ID extracted from token: %s", auth0UserID)
+
+		// Store the Auth0 User ID in the request context
+		ctx := context.WithValue(r.Context(), UserContextKey, auth0UserID)
+		log.Printf("JWTAuthMiddleware: Auth0 User ID stored in context with key '%s'", UserContextKey)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+func RoleCheckMiddleware(authService service.AuthService, requiredRole string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			log.Printf("RoleCheckMiddleware: Checking role '%s'", requiredRole)
+
+			// Retrieve the Auth0 User ID from the context
+			auth0UserID := r.Context().Value(UserContextKey)
+			if auth0UserID == nil {
+				log.Println("RoleCheckMiddleware: Auth0 User ID not found in context. Authentication likely failed.")
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+			auth0ID, ok := auth0UserID.(string)
+			if !ok {
+				log.Printf("RoleCheckMiddleware: Invalid Auth0 User ID type in context: %T, expected string", auth0UserID)
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
+			}
+			log.Printf("RoleCheckMiddleware: Auth0 User ID found in context: %s", auth0ID)
+
+			// Use the Auth0 User ID to retrieve roles
+			roles, err := authService.GetUserRoles(r.Context(), auth0ID)
+			if err != nil {
+				log.Printf("RoleCheckMiddleware: Failed to retrieve roles for Auth0 User ID %s: %v", auth0ID, err)
+				http.Error(w, "Failed to retrieve user roles", http.StatusInternalServerError)
+				return
+			}
+			log.Printf("RoleCheckMiddleware: Retrieved roles for Auth0 User ID %s: %v", auth0ID, roles)
+
+			hasRequiredRole := false
+			for _, role := range roles {
+				if role == requiredRole {
+					hasRequiredRole = true
+					break
+				}
+			}
+
+			if !hasRequiredRole {
+				log.Printf("RoleCheckMiddleware: Auth0 User ID %s does not have the required role '%s'.", auth0ID, requiredRole)
+				http.Error(w, "Insufficient permissions", http.StatusForbidden)
+				return
+			}
+
+			log.Printf("RoleCheckMiddleware: Auth0 User ID %s has the required role '%s'. Proceeding.", auth0ID, requiredRole)
+
+			// Optionally, you can add the roles to the context for later use in handlers
+			ctx := context.WithValue(r.Context(), RoleContextKey, roles)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
 }
