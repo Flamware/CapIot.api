@@ -1,9 +1,9 @@
-name: Deploy API to Google Cloud Kubernetes
+name: Deploy API to Google Cloud
 
 on:
   push:
     branches:
-      - api-main # Or whatever branch triggers API deployments
+      - main
   workflow_dispatch:
 
 jobs:
@@ -13,10 +13,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-        with:
-          repository: ${{ github.repository }} # Ensure this is the correct repo
-          ref: ${{ github.ref }} # Ensure this is the correct ref
-          path: capiot-api # Checkout into the api folder
 
       - name: Install Google Cloud SDK and gke-gcloud-auth-plugin
         uses: google-github-actions/setup-gcloud@v2
@@ -31,6 +27,8 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Show current working directory
+        run: ls -la
 
       - name: Build and push Docker image
         id: docker_build
