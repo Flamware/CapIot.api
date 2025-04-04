@@ -25,7 +25,7 @@ func NewAuthService(authRepo *repository.AuthRepository, userRepo dao.UserDAO) *
 
 // Claims structure for managing JWT tokens
 type Claims struct {
-	UserID string `json:"user_id"`
+	UserID int    `json:"user_id"`
 	Email  string `json:"email"`
 	jwt.RegisteredClaims
 }
@@ -38,31 +38,31 @@ func (s *AuthService) Login(email, password string) (string, error) {
 	}
 
 	// Step 2: Check if user exists in the database
-	exists, err := s.userRepo.UserExists(auth0ID)
+	userID, err := s.userRepo.UserExists(auth0ID)
 	if err != nil {
 		// If there is any error other than sql.ErrNoRows, return it
 		return "", fmt.Errorf("failed to check user existence: %w", err)
 	}
 
 	// Check if the user does not exist in the database
-	if !exists {
+	if userID == 0 {
 		log.Printf("User with email %s not found, creating new user.", email)
 
 		// Create a new user with the Auth0 ID and email
-		err := s.userRepo.CreateUser(auth0ID, auth0Email)
+		userID, err = s.userRepo.CreateUser(auth0ID, auth0Email)
 		if err != nil {
 			return "", fmt.Errorf("failed to create user: %w", err)
 		}
 
 		// Log the creation of the user
-		log.Printf("New user created with Auth0 ID: %s", auth0ID)
+		log.Printf("New user created with Auth0 ID: %s and User ID: %d", auth0ID, userID)
 	} else {
 		// Log if user is found in the database
-		log.Printf("User found in the database: %s", auth0ID)
+		log.Printf("User found in the database: %s with User ID: %d", auth0ID, userID)
 	}
 
 	// Step 3: Generate the custom JWT token
-	customJWT, err := utils.GenerateCustomJWT(auth0Email)
+	customJWT, err := utils.GenerateCustomJWT(auth0Email, userID)
 	if err != nil {
 		return "", err
 	}

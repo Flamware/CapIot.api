@@ -8,7 +8,7 @@ import (
 type User struct {
 	ID        int       `json:"id"`        // ID from the database
 	Email     string    `json:"email"`     // Email of the user
-	Name      string    `json:"Name"`      // Email of the user
+	Name      string    `json:"name"`      // Email of the user
 	Password  string    `json:"password"`  // Password of the user (it should be hashed before storing)
 	Role      string    `json:"roles"`     // List of roles assigned to the user
 	CreatedAt time.Time `json:"createdAt"` // Timestamp for when the user was created

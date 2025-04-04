@@ -1,7 +1,5 @@
 package models
 
-import "github.com/golang-jwt/jwt/v5"
-
 // LoginRequest contains the data coming from the client for login
 type LoginRequest struct {
 	Email    string `json:"email"`
@@ -22,10 +20,4 @@ type Auth0TokenResponse struct {
 	ExpiresIn    int    `json:"expires_in"`
 	RefreshToken string `json:"refresh_token"`
 	Scope        string `json:"scope"`
-}
-
-// JWTClaims represents the claims in our custom JWT
-type JWTClaims struct {
-	Email string `json:"email"`
-	jwt.RegisteredClaims
 }

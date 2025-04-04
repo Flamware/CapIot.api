@@ -19,36 +19,37 @@ func NewPostgresUserRepository(db *sql.DB) dao.UserDAO {
 	return &PostgresUserRepository{db: db}
 }
 
-// CreateUser inserts a user with the Auth0 ID and email into the database.
-func (r *PostgresUserRepository) CreateUser(auth0ID string, auth0_email string) error {
+// CreateUser inserts a user with the Auth0 ID and email into the database and returns the user ID.
+func (r *PostgresUserRepository) CreateUser(auth0ID string, auth0_email string) (int, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	query := `INSERT INTO users (auth0_id, email) VALUES ($1, $2)`
-	_, err := r.db.ExecContext(ctx, query, auth0ID, auth0_email)
+	var userID int
+	query := `INSERT INTO users (auth0_id, email) VALUES ($1, $2) RETURNING id`
+	err := r.db.QueryRowContext(ctx, query, auth0ID, auth0_email).Scan(&userID)
 	if err != nil {
 		log.Printf("Error inserting user into database: %v\n", err)
-		return err
+		return 0, err
 	}
-	log.Printf("User with Auth0 ID %s inserted into database.\n", auth0ID)
-	return nil
+	log.Printf("User with Auth0 ID %s inserted into database with ID %d.\n", auth0ID, userID)
+	return userID, nil
 }
 
 // UserExists checks if a user exists in the database.
-func (r *PostgresUserRepository) UserExists(auth0_id string) (bool, error) {
+func (r *PostgresUserRepository) UserExists(auth0_id string) (int, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	const query = `SELECT 1 FROM users WHERE auth0_id = $1 LIMIT 1`
-	var exists int
-	err := r.db.QueryRowContext(ctx, query, auth0_id).Scan(&exists)
+	const query = `SELECT id FROM users WHERE auth0_id = $1 LIMIT 1`
+	var userID int
+	err := r.db.QueryRowContext(ctx, query, auth0_id).Scan(&userID)
 	if err == sql.ErrNoRows {
-		return false, nil
+		return 0, nil
 	} else if err != nil {
 		log.Printf("Error checking user existence: %v\n", err)
-		return false, err
+		return 0, err
 	}
-	return true, nil
+	return userID, nil
 }
 
 // FindUserByID retrieves a user by their ID from the database.
@@ -56,11 +57,16 @@ func (r *PostgresUserRepository) FindUserByID(ID int) (*models.User, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	query := `SELECT id, name, email FROM users WHERE id = $1`
+	query := `SELECT id, name, email, role FROM users WHERE id = $1`
 	row := r.db.QueryRowContext(ctx, query, ID)
 
-	var user models.User
-	if err := row.Scan(&user.ID, &user.Name, &user.Email); err != nil {
+	var user struct {
+		ID    int
+		Name  sql.NullString
+		Email string
+		Role  sql.NullString
+	}
+	if err := row.Scan(&user.ID, &user.Name, &user.Email, &user.Role); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
@@ -68,11 +74,16 @@ func (r *PostgresUserRepository) FindUserByID(ID int) (*models.User, error) {
 		return nil, err
 	}
 
-	return &user, nil
+	return &models.User{
+		ID:    user.ID,
+		Name:  user.Name.String,
+		Email: user.Email,
+		Role:  user.Role.String,
+	}, nil
 }
 
 // UpdateUser updates a user in the database.
-func (r *PostgresUserRepository) UpdateUser(user models.User) error {
+func (r *PostgresUserRepository) UpdateUser(user models.User) (*models.User, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -80,10 +91,10 @@ func (r *PostgresUserRepository) UpdateUser(user models.User) error {
 	_, err := r.db.ExecContext(ctx, query, user.Name, user.Email, user.ID)
 	if err != nil {
 		log.Printf("Error updating user in database: %v\n", err)
-		return err
+		return nil, err
 	}
 	log.Printf("User %s updated in database.\n", user.ID)
-	return nil
+	return &user, nil
 }
 
 // DeleteUser deletes a user from the database.
