@@ -1,113 +1,13 @@
 package route
 
 import (
-	"CapIot-api/internal/service"
-	"encoding/json"
-	"log"
+	"CapIot-api/internal/handlers"
+	"github.com/gorilla/mux"
 	"net/http"
 )
 
-// LoginRequest is the struct for the login request body
-type LoginRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-}
-
-// SetupAuthRoutes initializes the authentication routes
-func SetupAuthRoutes(mux *http.ServeMux, authService *service.AuthService) {
-	mux.HandleFunc("/api/login", func(w http.ResponseWriter, r *http.Request) {
-		LoginHandler(w, r, authService)
-	})
-	mux.HandleFunc("/api/register", func(w http.ResponseWriter, r *http.Request) {
-		RegisterHandler(w, r, authService)
-	})
-
-}
-
-// LoginHandler handles login requests and delegates logic to AuthService
-func LoginHandler(w http.ResponseWriter, r *http.Request, authService *service.AuthService) {
-	// Log incoming requests for debugging
-	log.Printf("Received %s request for login", r.Method)
-
-	if r.Method != http.MethodPost {
-		// Log method not allowed error
-		log.Printf("Method %s not allowed for login", r.Method)
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Decode the login request
-	var req LoginRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		// Log decoding error
-		log.Printf("Failed to decode login request: %v", err)
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	// Call AuthService to authenticate and generate JWT
-	token, err := authService.Login(req.Email, req.Password)
-	if err != nil {
-		// Log authentication error
-		log.Printf("Authentication failed for email %s: %v", req.Email, err)
-		http.Error(w, err.Error(), http.StatusUnauthorized)
-		return
-	}
-
-	// Respond with the JWT
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	response := map[string]string{"jwtToken": token}
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		// Log encoding error if the response fails to send
-		log.Printf("Failed to encode response: %v", err)
-		http.Error(w, "Failed to send response", http.StatusInternalServerError)
-	}
-}
-
-// RegisterRequest is the struct for the registration request body
-type RegisterRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-}
-
-// RegisterHandler handles registration requests and delegates logic to AuthService
-func RegisterHandler(w http.ResponseWriter, r *http.Request, authService *service.AuthService) {
-	// Log incoming requests for debugging
-	log.Printf("Received %s request for registration", r.Method)
-
-	if r.Method != http.MethodPost {
-		// Log method not allowed error
-		log.Printf("Method %s not allowed for registration", r.Method)
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Decode the registration request
-	var req RegisterRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		// Log decoding error
-		log.Printf("Failed to decode registration request: %v", err)
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	// Call AuthService to register the user
-	err := authService.Register(req.Email, req.Password)
-	if err != nil {
-		// Log registration error
-		log.Printf("Registration failed for email %s: %v", req.Email, err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Respond with a success message
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	response := map[string]string{"message": "User registered successfully"}
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		// Log encoding error if the response fails to send
-		log.Printf("Failed to encode response: %v", err)
-		http.Error(w, "Failed to send response", http.StatusInternalServerError)
-	}
+// SetupAuthRoutes initializes the authentication routes using the AuthHandler
+func SetupAuthRoutes(r *mux.Router, authHandler *handlers.AuthHandler) {
+	r.HandleFunc("/api/login", authHandler.LoginHandler).Methods(http.MethodPost)
+	r.HandleFunc("/api/register", authHandler.RegisterHandler).Methods(http.MethodPost)
 }

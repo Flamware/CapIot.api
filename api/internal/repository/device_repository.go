@@ -20,7 +20,7 @@ func NewPostgresDeviceRepository(db *sql.DB) dao.DeviceDAO {
 }
 
 // InsertDevice inserts a device into the database.
-func (r *PostgresDeviceRepository) InsertDevice(device models.Device) error {
+func (r *PostgresDeviceRepository) InsertDevice(device *models.Device) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	query := `INSERT INTO devices (device_id, timestamp) VALUES ($1, $2)`

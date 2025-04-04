@@ -1,29 +1,27 @@
+// internal/route/mqtt_routes.go
 package route
 
 import (
-	"CapIot-api/internal/models"
-	"CapIot-api/internal/service"
-	"encoding/json"
+	"CapIot-api/internal/handlers"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"log"
 )
 
-func SetupMQTTRoutes(client mqtt.Client, service *service.DefaultDeviceService) {
-	topic := "devices/available/+"
-	if token := client.Subscribe(topic, 1, func(client mqtt.Client, msg mqtt.Message) {
-		log.Printf("Received message from topic: %s\n", msg.Topic())
-
-		var device models.Device
-		err := json.Unmarshal(msg.Payload(), &device)
-		if err != nil {
-			log.Printf("Error unmarshalling JSON: %v\n", err)
-			return
-		}
-		if err := service.CreateDevice(device); err != nil {
-			log.Printf("Error creating device: %v\n", err)
-		}
-	}); token.Wait() && token.Error() != nil {
+// SetupMQTTRoutes sets up MQTT topic subscriptions and handlers using the MqttHandler
+func SetupMQTTRoutes(client mqtt.Client, mqttHandler *handlers.MqttHandler) {
+	// Subscribe to the device availability topic and use the handler
+	availabilityTopic := "devices/available/+"
+	if token := client.Subscribe(availabilityTopic, 1, mqttHandler.HandleDeviceAvailability); token.Wait() && token.Error() != nil {
 		log.Fatalf("Error subscribing to topic: %v", token.Error())
 	}
-	log.Printf("Subscribed to topic: %s\n", topic)
+	log.Printf("Subscribed to topic: %s\n", availabilityTopic)
+
+	// Subscribe to the device data topic and use the handler
+	dataTopic := "iot/device/+/data"
+	if token := client.Subscribe(dataTopic, 0, mqttHandler.HandleDeviceData); token.Wait() && token.Error() != nil {
+		log.Fatalf("Error subscribing to topic: %v", token.Error())
+	}
+	log.Printf("Subscribed to topic: %s\n", dataTopic)
+
+	// Add more subscriptions and handler assignments as needed
 }
