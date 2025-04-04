@@ -15,7 +15,7 @@ import (
 )
 
 func main() {
-	// Load environment variables
+	// Load environment variabless
 	err := godotenv.Load()
 	if err != nil {
 		log.Println("No .env file found, relying on system environment variables")
@@ -69,10 +69,10 @@ func main() {
 
 	// CORS setup
 	c := cors.New(cors.Options{
-		AllowedOrigins:   []string{"*"},                                                                   // Allow all origins
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "CONNECT", "TRACE"}, // Allow all methods
-		AllowedHeaders:   []string{"*"},                                                                   // Allow all headers
-		AllowCredentials: true,                                                                            // If you need to allow credentials (cookies, auth headers, etc.)
+		AllowedOrigins:   []string{"*"},                                                                            // Allow all origins
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD", "CONNECT", "TRACE"}, // Allow all methods
+		AllowedHeaders:   []string{"*"},                                                                            // Allow all headers
+		AllowCredentials: true,                                                                                     // If you need to allow credentials (cookies, auth headers, etc.)
 	})
 	// Wrap the mux with CORS handler
 	handler := c.Handler(mux)

@@ -6,8 +6,8 @@ import (
 	"os"
 )
 
-// ValidateJWT validates a JWT token and returns a boolean indicating if the token is valid
-func ValidateJWT(tokenString string) (bool, error) {
+// ValidateJWT validates a JWT token and returns the claims if the token is valid
+func ValidateJWT(tokenString string) (jwt.MapClaims, error) {
 	secretKey := []byte(os.Getenv("JWT_SECRET_KEY"))
 
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
@@ -18,12 +18,12 @@ func ValidateJWT(tokenString string) (bool, error) {
 	})
 
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 
-	if _, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-		return true, nil
+	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+		return claims, nil
 	}
 
-	return false, errors.New("invalid token")
+	return nil, errors.New("invalid token")
 }

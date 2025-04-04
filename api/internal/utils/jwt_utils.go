@@ -8,7 +8,7 @@ import (
 )
 
 // GenerateCustomJWT generates a custom JWT token for the user
-func GenerateCustomJWT(email string) (string, error) {
+func GenerateCustomJWT(email string, user_id int) (string, error) {
 	// Retrieve the secret key from environment variables
 	secretKey := os.Getenv("JWT_SECRET_KEY")
 	if secretKey == "" {
@@ -18,6 +18,7 @@ func GenerateCustomJWT(email string) (string, error) {
 	// Create the JWT claims
 	claims := jwt.MapClaims{
 		"email": email,
+		"id":    user_id,
 		"iat":   time.Now().Unix(),
 		"exp":   time.Now().Add(time.Hour * 24).Unix(), // Token expires in 24 hours
 	}
