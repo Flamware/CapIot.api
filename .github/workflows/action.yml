@@ -35,7 +35,7 @@ jobs:
           cd api # Corrected cd command
           pwd # Print current directory after cd
           IMAGE_TAG=$(date +%Y%m%d%H%M%S)-${GITHUB_SHA::8}
-          docker build --tag flamware/capiot-api:$IMAGE_TAG -f Dockerfile . # Corrected docker build command
+          docker build --tag flamware/capiot-api:$IMAGE_TAG -f . # Corrected docker build command
           docker push flamware/capiot-api:$IMAGE_TAG
           echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
 
