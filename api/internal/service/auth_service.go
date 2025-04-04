@@ -69,3 +69,23 @@ func (s *AuthService) Login(email, password string) (string, error) {
 
 	return customJWT, nil
 }
+
+// Register handles user registration
+func (s *AuthService) Register(email, password string) error {
+	// Step 1: Register with Auth0
+	auth0ID, err := s.authRepo.RegisterWithAuth0(email, password)
+	if err != nil {
+		return fmt.Errorf("failed to register with Auth0: %w", err)
+	}
+
+	// Step 2: Create a new user in the database
+	_, err = s.userRepo.CreateUser(auth0ID, email)
+	if err != nil {
+		return fmt.Errorf("failed to create user: %w", err)
+	}
+
+	// Log the successful registration
+	log.Printf("User registered with Auth0 ID: %s and email: %s", auth0ID, email)
+
+	return nil
+}
