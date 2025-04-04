@@ -13,9 +13,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-        with:
-          repository: ${{ github.repository }}
-          ref: ${{ github.ref }}
 
       - name: Install Google Cloud SDK and gke-gcloud-auth-plugin
         uses: google-github-actions/setup-gcloud@v2
