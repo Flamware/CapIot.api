@@ -32,6 +32,10 @@ func SetupRouter(
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	})
+	mux.HandleFunc("/api/action", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	})
 
 	SetupAuthRoutes(mux, authService)
 	SetupLocationRoutes(mux, locationService)
