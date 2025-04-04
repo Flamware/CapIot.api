@@ -27,15 +27,14 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Show current working directory
-        run: ls -la
 
       - name: Build and push Docker image
         id: docker_build
         run: |
-          cd capiot-api/api # Navigate to the api directory
+          cd api # Navigate to the api directory
           IMAGE_TAG=$(date +%Y%m%d%H%M%S)-${GITHUB_SHA::8}
           docker build --push --no-cache \
+            --file Dockerfile \
             --tag flamware/capiot-api:$IMAGE_TAG \
             .
           echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT

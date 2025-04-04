@@ -31,12 +31,6 @@ temp/
 /tmp/
 *.bak
 
-# Docker
-Dockerfile
-.dockerignore
-docker-compose/docker-compose.yml
-!/cmd/*/Dockerfile # if you have dockerfiles inside cmd folders, this line is important.
-
 # OS generated files
 Thumbs.db
 .DS_Store
