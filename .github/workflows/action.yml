@@ -27,6 +27,8 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Show current working directory
+        run: ls -la
 
       - name: Build and push Docker image
         id: docker_build
