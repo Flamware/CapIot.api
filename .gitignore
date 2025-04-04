@@ -45,6 +45,9 @@ Thumbs.db
 node_modules/
 package-lock.json
 
+#env files
+.env*
+
 # Python
 *.pyc
 __pycache__/
