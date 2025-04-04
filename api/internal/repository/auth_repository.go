@@ -202,7 +202,7 @@ func (r *AuthRepository) LoadTokenFromFile() error {
 	return nil
 }
 
-// AuthenticateWithAuth0 verifies user credentials via Auth0
+// AuthenticateWithAuth0 verifies user credentials via Auth0 and returns user info with roles
 func (r *AuthRepository) AuthenticateWithAuth0(email, password string) (*models.AuthResult, error) {
 	auth0URL := fmt.Sprintf("https://%s/oauth/token", r.auth0Domain)
 
@@ -241,11 +241,18 @@ func (r *AuthRepository) AuthenticateWithAuth0(email, password string) (*models.
 
 	auth0ID, userEmail, err := extractAuth0IDAndEmail(tokenResponse.IDToken)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract Auth0 ID: %w", err)
+		return nil, fmt.Errorf("failed to extract Auth0 ID and email: %w", err)
 	}
 
-	log.Printf("✅ Auth0 authenticated user %s", userEmail)
-	return &models.AuthResult{Auth0ID: auth0ID, Email: userEmail}, nil
+	roles, err := r.GetUserRolesByAuth0ID(auth0ID)
+	if err != nil {
+		log.Printf("⚠️ Could not retrieve roles for user %s: %v", auth0ID, err)
+		// Decide if authentication should still succeed with empty roles
+		roles = []string{}
+	}
+
+	log.Printf("✅ Auth0 authenticated user %s with roles: %v", userEmail, roles)
+	return &models.AuthResult{Auth0ID: auth0ID, Email: userEmail, Role: roles}, nil
 }
 
 // RegisterWithAuth0 creates a new user in Auth0
@@ -332,11 +339,6 @@ func (r *AuthRepository) GetUserRolesByAuth0ID(auth0UserID string) ([]string, er
 		if role.Name != nil {
 			roleNames = append(roleNames, *role.Name)
 		}
-	}
-
-	// If no roles were found
-	if len(roleNames) == 0 {
-		return nil, fmt.Errorf("GetUserRolesByAuth0ID: no roles found for user %s", auth0UserID)
 	}
 
 	log.Printf("✅ User %s has the following roles: %v", auth0UserID, roleNames)

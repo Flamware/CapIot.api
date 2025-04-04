@@ -2,6 +2,7 @@ package route
 
 import (
 	"CapIot-api/internal/handlers"
+	"CapIot-api/internal/service"
 	"net/http"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -15,7 +16,9 @@ func SetupRouter(
 	locationHandler *handlers.LocationHandler,
 	userHandler *handlers.UserHandler,
 	mqttHandler *handlers.MqttHandler,
-	mqttClient mqtt.Client) *mux.Router {
+	authService service.AuthService, // Add authService as a parameter
+	mqttClient mqtt.Client,
+) *mux.Router {
 	r := mux.NewRouter()
 
 	// Public endpoint
@@ -43,7 +46,7 @@ func SetupRouter(
 	SetupLocationRoutes(r, locationHandler)
 	SetupDeviceRoute(r, deviceHandler)
 	SetupUserRoutes(r, userHandler)
-	SetupMQTTRoutes(mqttClient, mqttHandler) // Correctly pass deviceService
-
+	SetupMQTTRoutes(mqttClient, mqttHandler)
+	SetupAdminRoutes(r, authService) // Pass the authService directly
 	return r
 }
