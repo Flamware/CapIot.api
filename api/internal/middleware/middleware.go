@@ -4,13 +4,14 @@ import (
 	"CapIot-api/internal/auth" // Assuming your JWT validation is here
 	"CapIot-api/internal/service"
 	"context"
+	"github.com/dgrijalva/jwt-go"
 	"log"
 	"net/http"
 	"strings"
 )
 
 // UserContextKey is a key for storing user information in the request context.
-const UserContextKey = "auth0_id" // Changed to be more specific
+const UserClaimsContextKey = "user_claims"
 
 // RoleContextKey is a key for storing user roles in the request context.
 const RoleContextKey = "roles"
@@ -44,18 +45,9 @@ func JWTAuthMiddleware(next http.Handler) http.Handler {
 		}
 		log.Printf("JWTAuthMiddleware: JWT validation successful, claims: %v", claims)
 
-		// Extract the Auth0 User ID from the "sub" claim
-		auth0UserID, ok := claims["sub"].(string)
-		if !ok {
-			log.Printf("JWTAuthMiddleware: Invalid Auth0 user identifier type in token claims: %v, expected string", claims["sub"])
-			http.Error(w, "Invalid user identifier in token", http.StatusUnauthorized)
-			return
-		}
-		log.Printf("JWTAuthMiddleware: Auth0 User ID extracted from token: %s", auth0UserID)
-
-		// Store the Auth0 User ID in the request context
-		ctx := context.WithValue(r.Context(), UserContextKey, auth0UserID)
-		log.Printf("JWTAuthMiddleware: Auth0 User ID stored in context with key '%s'", UserContextKey)
+		// Store the entire claims map in the request context
+		ctx := context.WithValue(r.Context(), UserClaimsContextKey, claims)
+		log.Printf("JWTAuthMiddleware: All claims stored in context with key '%s'", UserClaimsContextKey)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -66,13 +58,14 @@ func RoleCheckMiddleware(authService service.AuthService, requiredRole string) f
 			log.Printf("RoleCheckMiddleware: Checking role '%s'", requiredRole)
 
 			// Retrieve the Auth0 User ID from the context
-			auth0UserID := r.Context().Value(UserContextKey)
+			auth0UserID := r.Context().Value(UserClaimsContextKey).(jwt.MapClaims)
 			if auth0UserID == nil {
 				log.Println("RoleCheckMiddleware: Auth0 User ID not found in context. Authentication likely failed.")
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
-			auth0ID, ok := auth0UserID.(string)
+
+			auth0ID, ok := auth0UserID["sub"].(string)
 			if !ok {
 				log.Printf("RoleCheckMiddleware: Invalid Auth0 User ID type in context: %T, expected string", auth0UserID)
 				http.Error(w, "Internal Server Error", http.StatusInternalServerError)

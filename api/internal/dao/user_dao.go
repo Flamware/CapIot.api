@@ -13,4 +13,6 @@ type UserDAO interface {
 	DeleteUser(userID int) error
 	GetUserByEmail(email string) (*models.User, error)
 	GetAllUsers() ([]models.User, error) // Update the return type to include error
+	AsignUser(userID, locationID int) error
+	GetUserLocations(userID int) ([]models.Location, error)
 }

@@ -5,6 +5,7 @@ import (
 	"CapIot-api/internal/middleware"
 	"CapIot-api/internal/models"
 	"CapIot-api/internal/service"
+	"CapIot-api/internal/utils"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -125,16 +126,21 @@ func (h *AuthHandler) GetUserRoleHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Extract user ID from the context (set by JWTAuthMiddleware)
-	userID := r.Context().Value(middleware.UserContextKey)
-	if userID == nil {
-		// Log error if user ID is not found in context
-		log.Println("User ID not found in context, authentication middleware might be missing")
+	// Retrieve the user claims structure from the context
+	claims, ok := r.Context().Value(middleware.UserClaimsContextKey).(*utils.Claims)
+	if !ok {
+		// Log error if user claims are not found or are of the wrong type
+		log.Println("User claims not found or invalid type in context, authentication middleware might be missing or misconfigured")
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
-	auth0UserID, ok := userID.(string)
+
+	// Access the User ID from the claims structure
+	auth0UserID := claims.Sub
+	log.Printf("Retrieved User ID from claims: %d", auth0UserID)
+
 	if !ok {
-		log.Printf("Invalid user ID type in context: %T, expected string", userID)
+		log.Printf("Invalid user ID type in context: %T, expected string", auth0UserID)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
