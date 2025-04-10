@@ -56,8 +56,18 @@ jobs:
           location: europe-west9
           project_id: awesome-vigil-454917-q7
 
-      - name: Update Kubernetes deployment and YAML
+      - name: Create/Update Flyway Migration ConfigMap
         run: |
-          kubectl set image deployment/api-deployment api=flamware/capiot-api:${{ steps.docker_build.outputs.image_tag }} -n capiot-app
-          kubectl rollout status deployment/api-deployment -n capiot-app --timeout=60s
-          kubectl get deployment api-deployment -n capiot-app -o yaml > api-deployment.yaml
+          kubectl create configmap flyway-migration-scripts \
+            --namespace=capiot-app \
+            --from-file=database/migration \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Apply updated API deployment
+        run: kubectl apply -f k8s/api/api-deployment.yaml -n capiot-app
+
+      - name: Wait for API deployment rollout
+        run: kubectl rollout status deployment/api-deployment -n capiot-app --timeout=120s
+
+      - name: Get API deployment YAML (Optional)
+        run: kubectl get deployment api-deployment -n capiot-app -o yaml > k8s/api/api-deployment.yaml
