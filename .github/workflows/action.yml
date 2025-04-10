@@ -64,11 +64,8 @@ jobs:
               --from-file=${{ github.workspace }}/database/migration \
               --dry-run=client -o yaml | kubectl apply -f -
 
-      - name: Apply updated API deployment
-        run: kubectl apply -f k8s/api/api-deployment.yaml -n capiot-app
-
-      - name: Wait for API deployment rollout
-        run: kubectl rollout status deployment/api-deployment -n capiot-app
-
-      - name: Get API deployment YAML (Optional)
-        run: kubectl get deployment api-deployment -n capiot-app -o yaml > k8s/api/api-deployment.yaml
+      - name: Update Kubernetes deployment and YAML
+        run: |
+          kubectl set image deployment/api-deployment api=flamware/capiot-api:${{ steps.docker_build.outputs.image_tag }} -n capiot-app
+          kubectl rollout status deployment/api-deployment -n capiot-app 
+          kubectl get deployment api-deployment -n capiot-app -o yaml > api-deployment.yaml
