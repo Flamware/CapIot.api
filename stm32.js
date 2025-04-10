@@ -12,87 +12,137 @@ const logger = winston.createLogger({
 
 // MQTT broker details
 const mqttBroker = 'tcp://localhost:1883';
-const deviceID = 'STM32-1235';
-const configTopic = `config/device/${deviceID}`;
-const availableTopic = `devices/available/${deviceID}`; // Device specific availability topic
+const availableTopic = `devices/available`; // Base topic for device availability
+const configTopicBase = `config/device`; // Base topic for configuration
 
-// MQTT client setup
-const mqttClient = mqtt.connect(mqttBroker, {
-    clientId: `STM32-simulator-${deviceID}`,
-    username: 'admin',
-    password: 'admin',
+// Sensor configuration with individual device IDs
+const sensors = [
+    { id: 'airQualitySensor', type: 'airQuality', deviceID: 'AQSensor-001' },
+    { id: 'specificPollutantSensor', type: 'specificPollutant', deviceID: 'PollutantSensor-002' },
+    { id: 'effectivenessSensor', type: 'effectivenessMetric', deviceID: 'EffectivenessSensor-003' },
+    { id: 'photocatalyseControl', type: 'control', deviceID: 'PhotocatalyseControl-004' },
+    { id: 'ionisatorControl', type: 'control', deviceID: 'IonisatorControl-005' },
+    { id: 'ozoneGeneratorControl', type: 'control', deviceID: 'OzoneControl-006' },
+];
+const sensorReadInterval = 25000; // Simulate sensor readings (though not publishing data)
+
+// MQTT clients for each "captor"
+const clients = {};
+
+sensors.forEach(sensor => {
+    const clientId = `simulator-${sensor.deviceID}`;
+    const client = mqtt.connect(mqttBroker, {
+        clientId: clientId,
+        username: 'admin',
+        password: 'admin',
+    });
+
+    client.on('connect', () => {
+        logger.info(`${clientId} connected to MQTT broker`);
+        publishAvailability(client, sensor.deviceID);
+        subscribeToConfig(client, sensor.deviceID);
+    });
+
+    client.on('error', (error) => {
+        logger.error(`${clientId} MQTT error:`, error);
+    });
+
+    clients[sensor.deviceID] = client;
 });
 
-mqttClient.on('connect', () => {
-    logger.info(`STM32 simulator connected to MQTT broker`);
-    publishAvailableMessage(); // Publish connection message to available topic
-    subscribeToConfigTopic();
-});
-
-mqttClient.on('error', (error) => {
-    logger.error(`STM32 simulator MQTT error:`, error);
-});
-
-function publishAvailableMessage() {
+function publishAvailability(client, deviceID) {
     const payload = {
         device_id: deviceID,
         timestamp: new Date().toISOString(),
     };
-
-    mqttClient.publish(availableTopic, JSON.stringify(payload), { qos: 1 }, (error) => {
+    client.publish(`${availableTopic}/${deviceID}`, JSON.stringify(payload), { qos: 1 }, (error) => {
         if (error) {
-            logger.error(`STM32 simulator error publishing available message:`, error);
+            logger.error(`Error publishing availability for ${deviceID}:`, error);
         } else {
-            logger.info(`STM32 simulator published available message:`, payload);
+            logger.info(`Published availability for ${deviceID}:`, payload);
         }
     });
 }
 
-function subscribeToConfigTopic() {
-    mqttClient.subscribe(configTopic, { qos: 1 }, (error) => {
+function subscribeToConfig(client, deviceID) {
+    const configTopic = `${configTopicBase}/${deviceID}`;
+    client.subscribe(configTopic, { qos: 1 }, (error) => {
         if (error) {
-            logger.error(`STM32 simulator error subscribing to ${configTopic}:`, error);
+            logger.error(`Error subscribing to ${configTopic} for ${deviceID}:`, error);
         } else {
-            logger.info(`STM32 simulator subscribed to ${configTopic}`);
+            logger.info(`Subscribed to ${configTopic} for ${deviceID}`);
         }
     });
 
-    mqttClient.on('message', (topic, message) => {
+    client.on('message', (topic, message) => {
         if (topic === configTopic) {
             try {
                 const config = JSON.parse(message.toString());
-                logger.info(`STM32 simulator received new configuration:`, config);
-                applyConfiguration(config);
+                logger.info(`${deviceID} received new configuration:`, config);
+                applyConfiguration(deviceID, config);
             } catch (error) {
-                logger.error(`STM32 simulator error parsing configuration:`, error);
+                logger.error(`Error parsing configuration for ${deviceID}:`, error);
             }
         }
     });
 }
 
-function applyConfiguration(config) {
-    if (config.temperatureRange) {
-        logger.info(`STM32 simulator: Updating temperature range: ${JSON.stringify(config.temperatureRange)}`);
-    }
-    if (config.humidityRange) {
-        logger.info(`STM32 simulator: Updating humidity range: ${JSON.stringify(config.humidityRange)}`);
+function applyConfiguration(deviceID, config) {
+    switch (deviceID) {
+        case 'AQSensor-001':
+            if (config.samplingRate) {
+                logger.info(`AQSensor-001: Setting sampling rate to ${config.samplingRate}`);
+                // Apply sampling rate logic here (not actually publishing data)
+            }
+            break;
+        case 'PollutantSensor-002':
+            if (config.pollutantType) {
+                logger.info(`PollutantSensor-002: Monitoring pollutant type: ${config.pollutantType}`);
+                // Apply pollutant type logic here
+            }
+            break;
+        case 'EffectivenessSensor-003':
+            if (config.calibrationValue) {
+                logger.info(`EffectivenessSensor-003: Setting calibration value to ${config.calibrationValue}`);
+                // Apply calibration logic here
+            }
+            break;
+        case 'PhotocatalyseControl-004':
+            if (config.power) {
+                logger.info(`PhotocatalyseControl-004: Setting power to ${config.power}`);
+                // Apply power control logic
+            }
+            break;
+        case 'IonisatorControl-005':
+            if (config.state) {
+                logger.info(`IonisatorControl-005: Setting state to ${config.state}`);
+                // Apply state control logic
+            }
+            break;
+        case 'OzoneControl-006':
+            if (config.threshold) {
+                logger.info(`OzoneControl-006: Setting threshold to ${config.threshold}`);
+                // Apply threshold control logic
+            }
+            break;
+        default:
+            logger.warn(`Received configuration for unknown device ID: ${deviceID}`);
     }
 }
 
-function sendStatusUpdate() {
-    const statusTopic = `status/device/${deviceID}`;
-    const statusPayload = {
-        online: true,
-        temperature: 25,
-        humidity: 60,
-    };
-    mqttClient.publish(statusTopic, JSON.stringify(statusPayload), { qos: 0 }, (error) => {
-        if (error) {
-            logger.error(`STM32 simulator error publishing status:`, error);
-        } else {
-            logger.info(`STM32 simulator published status:`, statusPayload);
-        }
-    });
+function simulateSensorReadings() {
+    // Simulate readings (without publishing) - this function is still running on the main process
+    const airQuality = Math.floor(Math.random() * 100);
+    const specificPollutant = (Math.random() * 20).toFixed(2);
+    const effectivenessMetric = Math.floor(Math.random() * 100);
+
+    // Log simulated readings for each "captor" (in the main process)
+    logger.info(`Simulated Readings:`);
+    logger.info(`  AQSensor-001: ${airQuality}`);
+    logger.info(`  PollutantSensor-002: ${specificPollutant}`);
+    logger.info(`  EffectivenessSensor-003: ${effectivenessMetric}`);
 }
 
-setInterval(sendStatusUpdate, 30000);
+// Start the simulation loop (in the main process)
+setInterval(simulateSensorReadings, sensorReadInterval);
+logger.info(`Main simulator process running (not publishing data)`);

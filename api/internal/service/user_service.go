@@ -13,6 +13,8 @@ type UserService interface {
 	UpdateUser(user models.User) (*models.User, error)
 	DeleteUser(id int) error
 	GetAllUsers() ([]models.User, error)
+	AsignUser(userID, locationID int) error
+	GetUserLocations(userID int) ([]models.Location, error)
 }
 
 // DefaultUserService is the concrete implementation of the UserService interface
@@ -79,4 +81,21 @@ func (s *DefaultUserService) GetAllUsers() ([]models.User, error) {
 		return nil, fmt.Errorf("failed to get all users: %w", err)
 	}
 	return users, nil
+}
+
+// AsignUser assigns a user to a location
+func (s *DefaultUserService) AsignUser(userID, locationID int) error {
+	if err := s.userDAO.AsignUser(userID, locationID); err != nil {
+		return fmt.Errorf("failed to assign user with ID %d to location with ID %d: %w", userID, locationID, err)
+	}
+	return nil
+}
+
+// GetUserLocations retrieves all locations assigned to a user
+func (s *DefaultUserService) GetUserLocations(userID int) ([]models.Location, error) {
+	locations, err := s.userDAO.GetUserLocations(userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get locations for user with ID %d: %w", userID, err)
+	}
+	return locations, nil
 }

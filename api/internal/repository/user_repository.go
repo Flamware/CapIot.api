@@ -162,3 +162,46 @@ func (r *PostgresUserRepository) GetAllUsers() ([]models.User, error) {
 
 	return list, nil
 }
+
+// AsignUser assigns a user to a location in the database.
+func (r *PostgresUserRepository) AsignUser(userID, locationID int) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `INSERT INTO user_location (user_id, location_id) VALUES ($1, $2)`
+	_, err := r.db.ExecContext(ctx, query, userID, locationID)
+	if err != nil {
+		log.Printf("Error assigning user to location: %v\n", err)
+		return err
+	}
+	log.Printf("User %d assigned to location %d.\n", userID, locationID)
+	return nil
+}
+
+// GetUserLocations retrieves all locations assigned to a user.
+func (r *PostgresUserRepository) GetUserLocations(userID int) ([]models.Location, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	query := `SELECT l.location_id, l.location_name, l.location_description FROM locations l JOIN user_location ul ON l.location_id = ul.location_id WHERE ul.user_id = $1`
+	rows, err := r.db.QueryContext(ctx, query, userID)
+	if err != nil {
+		log.Printf("Error getting user locations: %v\n", err)
+		return nil, err
+	}
+	defer rows.Close()
+	var locations []models.Location
+	for rows.Next() {
+		var location models.Location
+		if err := rows.Scan(&location.ID, &location.Name, &location.Description); err != nil {
+			log.Printf("Error scanning location row: %v\n", err)
+			return nil, err
+		}
+		locations = append(locations, location)
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("Error iterating location rows: %v\n", err)
+		return nil, err
+	}
+	log.Printf("User %d has %d locations.\n", userID, len(locations))
+	return locations, nil
+}

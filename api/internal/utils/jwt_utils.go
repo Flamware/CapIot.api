@@ -8,7 +8,16 @@ import (
 	"time"
 )
 
-// GenerateCustomJWT generates a custom JWT token for the user
+// Claims is a struct that holds the JWT claims
+type Claims struct {
+	Email string   `json:"email"`
+	Sub   string   `json:"sub"`
+	ID    int      `json:"id"`
+	Role  []string `json:"role"`
+	jwt.StandardClaims
+}
+
+// GenerateCustomJWT generates a custom JWT token for the user using the Claims struct
 func GenerateCustomJWT(Authresult *models.AuthResult, user_id int) (string, error) {
 	// Retrieve the secret key from environment variables
 	secretKey := os.Getenv("JWT_SECRET_KEY")
@@ -16,14 +25,16 @@ func GenerateCustomJWT(Authresult *models.AuthResult, user_id int) (string, erro
 		return "", fmt.Errorf("secret key not found in environment variables")
 	}
 
-	// Create the JWT claims
-	claims := jwt.MapClaims{
-		"email": Authresult.Email,
-		"sub":   Authresult.Auth0ID,
-		"id":    user_id,
-		"role":  Authresult.Role,
-		"iat":   time.Now().Unix(),
-		"exp":   time.Now().Add(time.Hour * 24).Unix(), // Token expires in 24 hours
+	// Create the JWT claims using the Claims struct
+	claims := Claims{
+		Email: Authresult.Email,
+		Sub:   Authresult.Auth0ID,
+		ID:    user_id,
+		Role:  Authresult.Role,
+		StandardClaims: jwt.StandardClaims{
+			IssuedAt:  time.Now().Unix(),
+			ExpiresAt: time.Now().Add(time.Hour * 24).Unix(), // Token expires in 24 hours
+		},
 	}
 
 	// Create the token using the claims
