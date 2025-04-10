@@ -67,5 +67,5 @@ jobs:
       - name: Update Kubernetes deployment and YAML
         run: |
           kubectl set image deployment/api-deployment api=flamware/capiot-api:${{ steps.docker_build.outputs.image_tag }} -n capiot-app
-          kubectl rollout status deployment/api-deployment -n capiot-app 
+          kubectl rollout status deployment/api-deployment -n capiot-app --timeout=5s
           kubectl get deployment api-deployment -n capiot-app -o yaml > api-deployment.yaml
