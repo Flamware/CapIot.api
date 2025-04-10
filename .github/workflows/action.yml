@@ -55,7 +55,6 @@ jobs:
           cluster_name: capiot-eu-cluster
           location: europe-west9
           project_id: awesome-vigil-454917-q7
-
       - name: Create/Update Flyway Migration ConfigMap
         run: |
           ls
