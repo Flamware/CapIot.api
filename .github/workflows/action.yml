@@ -55,6 +55,7 @@ jobs:
           cluster_name: capiot-eu-cluster
           location: europe-west9
           project_id: awesome-vigil-454917-q7
+
       - name: Create/Update Flyway Migration ConfigMap
         run: |
           ls
@@ -67,7 +68,7 @@ jobs:
         run: kubectl apply -f k8s/api/api-deployment.yaml -n capiot-app
 
       - name: Wait for API deployment rollout
-        run: kubectl rollout status deployment/api-deployment -n capiot-app --timeout=120s
+        run: kubectl rollout status deployment/api-deployment -n capiot-app
 
       - name: Get API deployment YAML (Optional)
         run: kubectl get deployment api-deployment -n capiot-app -o yaml > k8s/api/api-deployment.yaml
