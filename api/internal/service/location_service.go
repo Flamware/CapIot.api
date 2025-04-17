@@ -12,6 +12,8 @@ type DefaultLocationService struct {
 type LocationService interface {
 	CreateLocation(location models.Location) error
 	GetAllLocations() ([]models.Location, error)
+	GetCaptorsByLocationID(locationID string) ([]models.Captor, error)
+	GetDevicesByLocationID(id string) ([]models.Device, error)
 }
 
 func NewLocationService(dao dao.LocationDAO) *DefaultLocationService {
@@ -33,4 +35,24 @@ func (s *DefaultLocationService) CreateLocation(location models.Location) error 
 
 func (s *DefaultLocationService) GetAllLocations() ([]models.Location, error) {
 	return s.dao.GetAllLocations()
+}
+
+// service to get captors of a location
+func (s *DefaultLocationService) GetCaptorsByLocationID(locationID string) ([]models.Captor, error) {
+	captors, err := s.dao.GetCaptorsByLocationID(locationID)
+	if err != nil {
+		return nil, err
+	}
+
+	return captors, nil
+}
+
+// service to get devices of a location
+func (s *DefaultLocationService) GetDevicesByLocationID(id string) ([]models.Device, error) {
+	devices, err := s.dao.GetDevicesByLocationID(id)
+	if err != nil {
+		return nil, err
+	}
+
+	return devices, nil
 }

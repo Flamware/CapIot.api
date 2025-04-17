@@ -1,7 +1,8 @@
 const mqtt = require('mqtt');
 const winston = require('winston');
+const moment = require('moment');
 
-// Logging setup
+// Configuration du logger
 const logger = winston.createLogger({
     level: 'info',
     format: winston.format.json(),
@@ -10,139 +11,201 @@ const logger = winston.createLogger({
     ],
 });
 
-// MQTT broker details
+// Configuration MQTT
 const mqttBroker = 'tcp://localhost:1883';
-const availableTopic = `devices/available`; // Base topic for device availability
-const configTopicBase = `config/device`; // Base topic for configuration
+const deviceID = 'STM32-Simulator-001'; // ID unique pour ce simulateur
+const availabilityTopic = `devices/available/${deviceID}`;
+const configTopic = `config/device/${deviceID}`;
+const configAckTopic = `devices/${deviceID}/config/ack`;
+const statusTopic = `devices/status/${deviceID}`;
+const heartbeatTopic = `devices/heartbeat/${deviceID}`; // Topic dédié au heartbeat
+const dataTopicBase = `iot/data/${deviceID}`;
+const startCaptorsCommandTopic = `devices/${deviceID}/command/start_captors`;
 
-// Sensor configuration with individual device IDs
+// Configuration des capteurs simulés
 const sensors = [
-    { id: 'airQualitySensor', type: 'airQuality', deviceID: 'AQSensor-001' },
-    { id: 'specificPollutantSensor', type: 'specificPollutant', deviceID: 'PollutantSensor-002' },
-    { id: 'effectivenessSensor', type: 'effectivenessMetric', deviceID: 'EffectivenessSensor-003' },
-    { id: 'photocatalyseControl', type: 'control', deviceID: 'PhotocatalyseControl-004' },
-    { id: 'ionisatorControl', type: 'control', deviceID: 'IonisatorControl-005' },
-    { id: 'ozoneGeneratorControl', type: 'control', deviceID: 'OzoneControl-006' },
+    { type: 'temperature', id: 'temp-sim-001', currentValue: 25.5 },
+    { type: 'humidity', id: 'hum-sim-001', currentValue: 60.2 },
+    { type: 'pressure', id: 'press-sim-001', currentValue: 1012.3 },
 ];
-const sensorReadInterval = 25000; // Simulate sensor readings (though not publishing data)
 
-// MQTT clients for each "captor"
-const clients = {};
+let isConfigured = false;
+let isMonitoring = false;
+let currentConfig = {};
 
-sensors.forEach(sensor => {
-    const clientId = `simulator-${sensor.deviceID}`;
-    const client = mqtt.connect(mqttBroker, {
-        clientId: clientId,
-        username: 'admin',
-        password: 'admin',
-    });
+// Options de connexion MQTT avec LWT
+const connectOptions = {
+    clientId: deviceID,
+    username: 'admin', // Si votre broker requiert une authentification
+    password: 'admin',
+    will: {
+        topic: `devices/lwt/${deviceID}`, // Changed topic for LWT
+        payload: JSON.stringify({ device_id: deviceID, status: 'offline', timestamp: moment().toISOString() }),
+        qos: 1,
+        retain: false,
+    },
+};
 
-    client.on('connect', () => {
-        logger.info(`${clientId} connected to MQTT broker`);
-        publishAvailability(client, sensor.deviceID);
-        subscribeToConfig(client, sensor.deviceID);
-    });
+// Création du client MQTT
+const client = mqtt.connect(mqttBroker, connectOptions);
 
-    client.on('error', (error) => {
-        logger.error(`${clientId} MQTT error:`, error);
-    });
+client.on('connect', () => {
+    logger.info(`${deviceID} connecté au broker MQTT`);
 
-    clients[sensor.deviceID] = client;
+    // Publication immédiate de l'availability
+    publishAvailability();
+
+    // Abonnement aux topics de configuration et de démarrage des capteurs
+    client.subscribe(configTopic, { qos: 1 });
+    client.subscribe(startCaptorsCommandTopic, { qos: 1 });
+
+    // Publication périodique du statut "running" (peut être utilisé comme un heartbeat de base)
+    setInterval(publishOnlineStatus, 6000); // Toutes les 60 secondes
+
+    // Publication périodique du heartbeat sur un topic dédié
+    setInterval(publishHeartbeat, 3000); // Toutes les 30 secondes (plus fréquent que le statut)
 });
 
-function publishAvailability(client, deviceID) {
+client.on('message', (topic, message) => {
+    const payloadString = message.toString();
+    logger.info(`${deviceID} a reçu un message sur le topic ${topic}: ${payloadString}`);
+
+    try {
+        const payload = JSON.parse(payloadString);
+
+        if (topic === configTopic) {
+            handleConfiguration(payload);
+        } else if (topic === startCaptorsCommandTopic) {
+            handleStartCaptorsCommand();
+        }
+    } catch (error) {
+        logger.error(`${deviceID} Erreur lors du parsing du message sur ${topic}: ${error}`);
+    }
+});
+
+client.on('error', (error) => {
+    logger.error(`${deviceID} Erreur MQTT: ${error}`);
+});
+
+client.on('disconnect', () => {
+    logger.info(`${deviceID} déconnecté du broker MQTT`);
+});
+
+function publishAvailability() {
+    const capabilities = sensors.map(sensor => ({
+        captor_type: sensor.type,
+        captor_id: sensor.id,
+    }));
+
     const payload = {
         device_id: deviceID,
-        timestamp: new Date().toISOString(),
+        status: 'online',
+        timestamp: moment().toISOString(),
+        captors: capabilities,
     };
-    client.publish(`${availableTopic}/${deviceID}`, JSON.stringify(payload), { qos: 1 }, (error) => {
+
+    client.publish(availabilityTopic, JSON.stringify(payload), { qos: 1, retain: false }, (error) => {
         if (error) {
-            logger.error(`Error publishing availability for ${deviceID}:`, error);
+            logger.error(`${deviceID} Erreur lors de la publication de l'availability: ${error}`);
         } else {
-            logger.info(`Published availability for ${deviceID}:`, payload);
+            logger.info(`${deviceID} Availability publiée sur ${availabilityTopic}: ${JSON.stringify(payload)}`);
         }
     });
 }
 
-function subscribeToConfig(client, deviceID) {
-    const configTopic = `${configTopicBase}/${deviceID}`;
-    client.subscribe(configTopic, { qos: 1 }, (error) => {
-        if (error) {
-            logger.error(`Error subscribing to ${configTopic} for ${deviceID}:`, error);
-        } else {
-            logger.info(`Subscribed to ${configTopic} for ${deviceID}`);
-        }
-    });
+function publishOnlineStatus() {
+    const payload = {
+        device_id: deviceID,
+        status: 'running',
+        timestamp: moment().toISOString(),
+    };
 
-    client.on('message', (topic, message) => {
-        if (topic === configTopic) {
-            try {
-                const config = JSON.parse(message.toString());
-                logger.info(`${deviceID} received new configuration:`, config);
-                applyConfiguration(deviceID, config);
-            } catch (error) {
-                logger.error(`Error parsing configuration for ${deviceID}:`, error);
-            }
+    client.publish(statusTopic, JSON.stringify(payload), { qos: 1, retain: false }, (error) => {
+        if (error) {
+            logger.error(`${deviceID} Erreur lors de la publication du statut en ligne: ${error}`);
+        } else {
+            logger.info(`${deviceID} Statut "running" publié sur ${statusTopic}: ${JSON.stringify(payload)}`);
         }
     });
 }
 
-function applyConfiguration(deviceID, config) {
-    switch (deviceID) {
-        case 'AQSensor-001':
-            if (config.samplingRate) {
-                logger.info(`AQSensor-001: Setting sampling rate to ${config.samplingRate}`);
-                // Apply sampling rate logic here (not actually publishing data)
-            }
-            break;
-        case 'PollutantSensor-002':
-            if (config.pollutantType) {
-                logger.info(`PollutantSensor-002: Monitoring pollutant type: ${config.pollutantType}`);
-                // Apply pollutant type logic here
-            }
-            break;
-        case 'EffectivenessSensor-003':
-            if (config.calibrationValue) {
-                logger.info(`EffectivenessSensor-003: Setting calibration value to ${config.calibrationValue}`);
-                // Apply calibration logic here
-            }
-            break;
-        case 'PhotocatalyseControl-004':
-            if (config.power) {
-                logger.info(`PhotocatalyseControl-004: Setting power to ${config.power}`);
-                // Apply power control logic
-            }
-            break;
-        case 'IonisatorControl-005':
-            if (config.state) {
-                logger.info(`IonisatorControl-005: Setting state to ${config.state}`);
-                // Apply state control logic
-            }
-            break;
-        case 'OzoneControl-006':
-            if (config.threshold) {
-                logger.info(`OzoneControl-006: Setting threshold to ${config.threshold}`);
-                // Apply threshold control logic
-            }
-            break;
-        default:
-            logger.warn(`Received configuration for unknown device ID: ${deviceID}`);
+function publishHeartbeat() {
+    const payload = {
+        device_id: deviceID,
+        timestamp: moment().toISOString(),
+    };
+
+    client.publish(heartbeatTopic, JSON.stringify(payload), { qos: 0, retain: false }, (error) => {
+        if (error) {
+            logger.error(`${deviceID} Erreur lors de la publication du heartbeat: ${error}`);
+        } else {
+            logger.info(`${deviceID} Heartbeat publié sur ${heartbeatTopic}: ${JSON.stringify(payload)}`);
+        }
+    });
+}
+
+function handleConfiguration(config) {
+    logger.info(`${deviceID} a reçu une configuration: ${JSON.stringify(config)}`);
+    currentConfig = config;
+    isConfigured = true;
+
+    // Simuler l'application de la configuration (vous feriez ici la logique réelle)
+    logger.info(`${deviceID} Configuration appliquée.`);
+
+    // Envoyer un acknowledgement de configuration
+    const ackPayload = {
+        status: 'configured',
+        timestamp: moment().toISOString(),
+    };
+    client.publish(configAckTopic, JSON.stringify(ackPayload), { qos: 1 }, (error) => {
+        if (error) {
+            logger.error(`${deviceID} Erreur lors de l'envoi de l'ACK de configuration: ${error}`);
+        } else {
+            logger.info(`${deviceID} ACK de configuration publié sur ${configAckTopic}: ${JSON.stringify(ackPayload)}`);
+        }
+    });
+}
+
+function handleStartCaptorsCommand() {
+    if (isConfigured) {
+        logger.info(`${deviceID} a reçu la commande de démarrage des capteurs.`);
+        isMonitoring = true;
+        startDataMonitoring();
+    } else {
+        logger.warn(`${deviceID} a reçu la commande de démarrage avant d'être configuré.`);
     }
 }
 
-function simulateSensorReadings() {
-    // Simulate readings (without publishing) - this function is still running on the main process
-    const airQuality = Math.floor(Math.random() * 100);
-    const specificPollutant = (Math.random() * 20).toFixed(2);
-    const effectivenessMetric = Math.floor(Math.random() * 100);
-
-    // Log simulated readings for each "captor" (in the main process)
-    logger.info(`Simulated Readings:`);
-    logger.info(`  AQSensor-001: ${airQuality}`);
-    logger.info(`  PollutantSensor-002: ${specificPollutant}`);
-    logger.info(`  EffectivenessSensor-003: ${effectivenessMetric}`);
+function startDataMonitoring() {
+    if (isMonitoring) {
+        logger.info(`${deviceID} Démarrage de la surveillance et de la publication des données.`);
+        setInterval(publishSensorData, 5000); // Publier les données toutes les 5 secondes
+    }
 }
 
-// Start the simulation loop (in the main process)
-setInterval(simulateSensorReadings, sensorReadInterval);
-logger.info(`Main simulator process running (not publishing data)`);
+function publishSensorData() {
+    if (isMonitoring) {
+        const timestamp = moment().toISOString();
+        const data = {};
+        sensors.forEach(sensor => {
+            // Simuler la lecture du capteur (ajouter un peu de variation)
+            sensor.currentValue += (Math.random() - 0.5) * 0.1;
+            data[sensor.type] = sensor.currentValue.toFixed(2);
+            const payload = {
+                device_id: deviceID,
+                sensor_id: sensor.id,
+                type: sensor.type,
+                value: sensor.currentValue.toFixed(2),
+                timestamp: timestamp,
+            };
+            const dataTopic = `${dataTopicBase}/${sensor.type}`;
+            client.publish(dataTopic, JSON.stringify(payload), { qos: 0 }, (error) => {
+                if (error) {
+                    logger.error(`${deviceID} Erreur lors de la publication des données de ${sensor.type}: ${error}`);
+                } else {
+                    logger.info(`${deviceID} Données de ${sensor.type} publiées sur ${dataTopic}: ${JSON.stringify(payload)}`);
+                }
+            });
+        });
+    }
+}

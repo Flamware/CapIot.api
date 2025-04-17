@@ -55,6 +55,16 @@ func (s *DefaultAuthService) Login(email, password string) (string, error) {
 
 	// Check user role (already done in AuthenticateWithAuth0)
 	log.Printf("User %s authenticated with roles: %v", authResult.Email, authResult.Role)
+	// Look for user's locations
+	locations, err := s.userRepo.GetUserLocations(userID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get user locations: %w", err)
+	}
+	// Extract location IDs
+	locationIDs := make([]int, len(locations))
+	for i, location := range locations {
+		locationIDs[i] = location.ID
+	}
 
 	// Check if the user does not exist in the database
 	if userID == 0 {
@@ -71,10 +81,17 @@ func (s *DefaultAuthService) Login(email, password string) (string, error) {
 	} else {
 		// Log if user is found in the database
 		log.Printf("User found in the database: %s with User ID: %d", authResult.Auth0ID, userID)
+
+		if len(locationIDs) == 0 {
+
+			log.Printf("No locations found for user %d", userID)
+		} else {
+			log.Printf("User %d has access to locations: %v", userID, locationIDs)
+		}
 	}
 
 	// Step 3: Generate the custom JWT token, including roles
-	customJWT, err := utils.GenerateCustomJWT(authResult, userID)
+	customJWT, err := utils.GenerateCustomJWT(authResult, userID, locationIDs)
 	if err != nil {
 		return "", err
 	}

@@ -4,39 +4,43 @@ import (
 	"CapIot-api/internal/models"
 	"fmt"
 	"github.com/dgrijalva/jwt-go"
+	"log"
 	"os"
 	"time"
 )
 
 // Claims is a struct that holds the JWT claims
 type Claims struct {
-	Email string   `json:"email"`
-	Sub   string   `json:"sub"`
-	ID    int      `json:"id"`
-	Role  []string `json:"role"`
+	Email     string   `json:"email"`
+	Sub       string   `json:"sub"`
+	ID        int      `json:"id"`
+	Role      []string `json:"role"`
+	locations []int    `json:"locations"`
 	jwt.StandardClaims
 }
 
 // GenerateCustomJWT generates a custom JWT token for the user using the Claims struct
-func GenerateCustomJWT(Authresult *models.AuthResult, user_id int) (string, error) {
+func GenerateCustomJWT(Authresult *models.AuthResult, user_id int, locationIDs []int) (string, error) {
 	// Retrieve the secret key from environment variables
 	secretKey := os.Getenv("JWT_SECRET_KEY")
 	if secretKey == "" {
 		return "", fmt.Errorf("secret key not found in environment variables")
 	}
+	log.Println("Location IDs:", locationIDs)
 
 	// Create the JWT claims using the Claims struct
 	claims := Claims{
-		Email: Authresult.Email,
-		Sub:   Authresult.Auth0ID,
-		ID:    user_id,
-		Role:  Authresult.Role,
+		Email:     Authresult.Email,
+		Sub:       Authresult.Auth0ID,
+		ID:        user_id,
+		Role:      Authresult.Role,
+		locations: locationIDs,
 		StandardClaims: jwt.StandardClaims{
 			IssuedAt:  time.Now().Unix(),
 			ExpiresAt: time.Now().Add(time.Hour * 24).Unix(), // Token expires in 24 hours
 		},
 	}
-
+	log.Println("Generating JWT token with claims:", claims)
 	// Create the token using the claims
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 

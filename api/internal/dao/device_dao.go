@@ -11,5 +11,8 @@ type DeviceDAO interface {
 	GetAllDevices() ([]models.Device, error)
 	SetDeviceToLocation(deviceID string, locationID int) error
 	IsDeviceAssigned(deviceID string) (bool, error) // Add this method
-
+	GetDeviceByDeviceID(deviceID string) (*models.Device, error)
+	GetCaptorByID(captorID string) (*models.Captor, error)
+	CreateCaptor(captor *models.Captor) (*models.Captor, error)
+	CreateDeviceCaptor(deviceCaptor *models.DeviceCaptor) error
 }

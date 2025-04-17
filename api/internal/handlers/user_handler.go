@@ -57,7 +57,7 @@ func (h *UserHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *UserHandler) UpdateCurrentUser(w http.ResponseWriter, r *http.Request) {
-	claimsContextKey := "userClaims"
+	claimsContextKey := middleware.UserClaimsContextKey
 	userClaims, ok := r.Context().Value(claimsContextKey).(jwt.MapClaims)
 	if !ok {
 		http.Error(w, "Invalid user claims", http.StatusInternalServerError)

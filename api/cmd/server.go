@@ -34,7 +34,7 @@ func main() {
 	}
 
 	userRepo := repository.NewPostgresUserRepository(db)
-	deviceRepo := repository.NewPostgresDeviceRepository(db)
+	deviceRepo := repository.NewPostgresDeviceDAO(db) // Corrected function name
 	locationRepo := repository.NewPostgresLocationRepository(db)
 
 	// Initialize services
@@ -48,7 +48,6 @@ func main() {
 	deviceHandler := handlers.NewDeviceHandler(deviceService)
 	locationHandler := handlers.NewLocationHandler(locationService)
 	userHandler := handlers.NewUserHandler(userService)
-	mqttHandler := handlers.NewMqttHandler(deviceService) // Initialize MqttHandler
 
 	// MQTT client setup.
 	mqttBroker := os.Getenv("MQTT_BROKER")
@@ -66,6 +65,8 @@ func main() {
 		log.Fatalf("Error connecting to MQTT broker: %v", token.Error())
 	}
 	log.Println("Successfully connected to MQTT broker!")
+
+	mqttHandler := handlers.NewMqttHandler(deviceService, client) // Initialize MqttHandler
 
 	// Set up the router with the handlers and MQTT client
 	r := route.SetupRouter(
