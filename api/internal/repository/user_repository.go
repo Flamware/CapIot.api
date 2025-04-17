@@ -186,7 +186,7 @@ func (r *PostgresUserRepository) GetUserLocations(userID int) ([]models.Location
 	rows, err := r.db.QueryContext(ctx, query, userID)
 	if err != nil {
 		log.Printf("Error getting user locations: %v\n", err)
-		return nil, err
+		return []models.Location{}, err // Return empty slice on error
 	}
 	defer rows.Close()
 	var locations []models.Location
@@ -194,14 +194,14 @@ func (r *PostgresUserRepository) GetUserLocations(userID int) ([]models.Location
 		var location models.Location
 		if err := rows.Scan(&location.ID, &location.Name, &location.Description); err != nil {
 			log.Printf("Error scanning location row: %v\n", err)
-			return nil, err
+			return []models.Location{}, err // Return empty slice on scan error
 		}
 		locations = append(locations, location)
 	}
 	if err := rows.Err(); err != nil {
 		log.Printf("Error iterating location rows: %v\n", err)
-		return nil, err
+		return []models.Location{}, err // Return empty slice on iteration error
 	}
 	log.Printf("User %d has %d locations.\n", userID, len(locations))
-	return locations, nil
+	return locations, nil // Return the (potentially empty) locations slice
 }
