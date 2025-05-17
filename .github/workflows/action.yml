@@ -60,12 +60,12 @@ jobs:
         run: |
           ls
            kubectl create configmap flyway-migration-scripts \
-              --namespace=capiot-app \
+              --namespace=capiot \
               --from-file=${{ github.workspace }}/database/migration \
               --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Update Kubernetes deployment and YAML
         run: |
-          kubectl set image deployment/api-deployment api=flamware/capiot-api:${{ steps.docker_build.outputs.image_tag }} -n capiot-app
-          kubectl rollout status deployment/api-deployment -n capiot-app 
-          kubectl get deployment api-deployment -n capiot-app -o yaml > api-deployment.yaml
+          kubectl set image deployment/api-backend-deployment api=flamware/capiot-api:${{ steps.docker_build.outputs.image_tag }} -n capiot
+          kubectl rollout status deployment/api-backend-deployment -n capiot
+          kubectl get deployment api-backend-deployment -n capiot -o yaml > api-backend-deployment.yaml
