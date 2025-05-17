@@ -2,6 +2,7 @@ package dao
 
 import (
 	"CapIot-api/internal/models"
+	"context"
 )
 
 // UserDAO defines the interface for user data access.
@@ -15,4 +16,6 @@ type UserDAO interface {
 	GetAllUsers() ([]models.User, error) // Update the return type to include error
 	AsignUser(userID, locationID int) error
 	GetUserLocations(userID int) ([]models.Location, error)
+	FindAllWithLocations(ctx context.Context, limit int, offset int, search string) ([]*models.UserLocations, error)
+	CountAll(ctx context.Context, search string) (int, error)
 }

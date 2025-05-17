@@ -21,6 +21,23 @@ type DeviceCaptor struct {
 	DeviceID string `json:"device_id" db:"device_id"`
 	CaptorID string `json:"captor_id" db:"captor_id"`
 }
+
+// DeviceLocation represents the link between a device and a location,
+// including the assignment timestamp and whether it's the current location.
+type DeviceLocation struct {
+	DeviceID   string    `json:"device_id" db:"device_id"`
+	LocationID int       `json:"location_id" db:"location_id"`
+	AssignedAt time.Time `json:"assigned_at" db:"assigned_at"`
+	IsCurrent  bool      `json:"is_current" db:"is_current"`
+}
+
+// DeviceWithCaptors represents a device with its associated captors.
+type DeviceWithCaptors struct {
+	*Device
+	Captors []*Captor `json:"captors,omitempty"`
+}
+
+// OperationalStatus represents the operational status of a device.
 type OperationalStatus string
 
 const (
@@ -29,3 +46,16 @@ const (
 	StatusStopped OperationalStatus = "stopped"
 	// Add other statuses as needed
 )
+
+// DeviceWithSensorsAndLocation is a composite model to represent a device
+// along with its associated sensors and current location. This is useful
+// for API responses that need to return this combined information.
+type DeviceWithSensorsAndLocation struct {
+	*DeviceWithCaptors
+	Location *Location `json:"location,omitempty"`
+}
+
+type AssignDeviceToLocationRequest struct {
+	DeviceID   string `json:"device_id"`
+	LocationID int    `json:"location_id"`
+}

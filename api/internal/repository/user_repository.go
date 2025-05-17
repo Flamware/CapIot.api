@@ -57,7 +57,7 @@ func (r *PostgresUserRepository) FindUserByID(ID int) (*models.User, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	query := `SELECT id, name, email, role FROM users WHERE id = $1`
+	query := `SELECT id, name, email FROM users WHERE id = $1`
 	row := r.db.QueryRowContext(ctx, query, ID)
 
 	var user struct {
@@ -66,7 +66,7 @@ func (r *PostgresUserRepository) FindUserByID(ID int) (*models.User, error) {
 		Email string
 		Role  sql.NullString
 	}
-	if err := row.Scan(&user.ID, &user.Name, &user.Email, &user.Role); err != nil {
+	if err := row.Scan(&user.ID, &user.Name, &user.Email); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
@@ -78,7 +78,6 @@ func (r *PostgresUserRepository) FindUserByID(ID int) (*models.User, error) {
 		ID:    user.ID,
 		Name:  user.Name.String,
 		Email: user.Email,
-		Role:  user.Role.String,
 	}, nil
 }
 
@@ -204,4 +203,88 @@ func (r *PostgresUserRepository) GetUserLocations(userID int) ([]models.Location
 	}
 	log.Printf("User %d has %d locations.\n", userID, len(locations))
 	return locations, nil // Return the (potentially empty) locations slice
+}
+
+// GetUsersLocations retrieves all locations assigned to a user.
+func (r *PostgresUserRepository) FindAllWithLocations(ctx context.Context, limit int, offset int, search string) ([]*models.UserLocations, error) {
+	query := `
+		SELECT
+			u.id, u.name, u.email, u.created_at, u.auth0_id,
+			l.location_id, l.location_name, l.location_description
+			FROM users u
+			LEFT JOIN user_location ul ON u.id = ul.user_id
+			LEFT JOIN locations l ON ul.location_id = l.location_id
+			WHERE u.name ILIKE '%' || $1 || '%' OR u.email ILIKE '%' || $1 || '%'
+			LIMIT $2 OFFSET $3
+	`
+	rows, err := r.db.QueryContext(ctx, query, search, limit, offset)
+	if err != nil {
+		log.Printf("Error getting users and their locations: %v\n", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	usersLocationMap := make(map[int]*models.UserLocations)
+
+	for rows.Next() {
+		var user models.User
+		var locationID *int
+		var locationName, locationDescription *string
+
+		if err := rows.Scan(
+			&user.ID, &user.Name, &user.Email, &user.CreatedAt, &user.Auth0ID,
+			&locationID, &locationName, &locationDescription,
+		); err != nil {
+			log.Printf("Error scanning user location row: %v\n", err)
+			return nil, err
+		}
+
+		userLocation, ok := usersLocationMap[user.ID]
+		if !ok {
+			userLocation = &models.UserLocations{
+				User:      user,
+				Locations: []*models.Location{},
+			}
+			usersLocationMap[user.ID] = userLocation
+		}
+
+		if locationID != nil {
+			location := &models.Location{
+				ID:          locationID,
+				Name:        nil,
+				Description: nil,
+			}
+			if locationName != nil {
+				location.Name = locationName
+			}
+			if locationDescription != nil {
+				location.Description = locationDescription
+			}
+			userLocation.Locations = append(userLocation.Locations, location)
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		log.Printf("Error iterating user location rows: %v\n", err)
+		return nil, err
+	}
+
+	var usersLocations []*models.UserLocations
+	for _, ul := range usersLocationMap {
+		usersLocations = append(usersLocations, ul)
+	}
+
+	return usersLocations, nil
+}
+
+// CountAll counts all users in the database with optional search.
+func (r *PostgresUserRepository) CountAll(ctx context.Context, search string) (int, error) {
+	query := `SELECT COUNT(*) FROM users WHERE name ILIKE '%' || $1 || '%' OR email ILIKE '%' || $1 || '%'`
+	row := r.db.QueryRowContext(ctx, query, search)
+	var count int
+	if err := row.Scan(&count); err != nil {
+		log.Printf("Error counting users: %v\n", err)
+		return 0, err
+	}
+	return count, nil
 }

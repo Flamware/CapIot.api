@@ -2,10 +2,7 @@
 package handlers
 
 import (
-	"CapIot-api/internal/middleware"
-	"CapIot-api/internal/models"
 	"CapIot-api/internal/service"
-	"CapIot-api/internal/utils"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -109,61 +106,6 @@ func (h *AuthHandler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		// Log encoding error if the response fails to send
 		log.Printf("Failed to encode response: %v", err)
-		http.Error(w, "Failed to send response", http.StatusInternalServerError)
-	}
-}
-
-// GetUserRoleHandler retrieves the roles of the authenticated user
-func (h *AuthHandler) GetUserRoleHandler(w http.ResponseWriter, r *http.Request) {
-	// Log incoming request
-	log.Printf("Received %s request for user roles", r.Method)
-
-	if r.Method != http.MethodGet {
-		// Log method not allowed error
-		log.Printf("Method %s not allowed for getting user roles", r.Method)
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Extract user ID from the context (set by JWTAuthMiddleware)
-	// Retrieve the user claims structure from the context
-	claims, ok := r.Context().Value(middleware.UserClaimsContextKey).(*utils.Claims)
-	if !ok {
-		// Log error if user claims are not found or are of the wrong type
-		log.Println("User claims not found or invalid type in context, authentication middleware might be missing or misconfigured")
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	// Access the User ID from the claims structure
-	auth0UserID := claims.Sub
-	log.Printf("Retrieved User ID from claims: %d", auth0UserID)
-
-	if !ok {
-		log.Printf("Invalid user ID type in context: %T, expected string", auth0UserID)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-
-	// Call AuthService to get user roles
-	roles, err := h.authService.GetUserRoles(r.Context(), auth0UserID)
-	if err != nil {
-		// Log error from AuthService
-		log.Printf("Failed to get roles for user %s: %v", auth0UserID, err)
-		http.Error(w, "Failed to retrieve user roles", http.StatusInternalServerError)
-		return
-	}
-
-	// Respond with the user ID and their roles
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	response := models.AuthResult{
-		Auth0ID: auth0UserID,
-		Role:    roles,
-	}
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		// Log encoding error
-		log.Printf("Failed to encode user role response: %v", err)
 		http.Error(w, "Failed to send response", http.StatusInternalServerError)
 	}
 }

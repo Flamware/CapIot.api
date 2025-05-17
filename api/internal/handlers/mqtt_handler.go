@@ -17,7 +17,7 @@ type MqttHandler struct {
 }
 
 // NewMqttHandler creates a new MqttHandler instance, now taking DeviceService and mqtt.Client
-func NewMqttHandler(deviceService service.DeviceService, mqttClient mqtt.Client) *MqttHandler {
+func NewMqttHandler(deviceService *service.DefaultDeviceService, mqttClient mqtt.Client) *MqttHandler {
 	return &MqttHandler{
 		deviceService: deviceService,
 		mqttClient:    mqttClient, // Store the MQTT client
@@ -128,7 +128,7 @@ func (h *MqttHandler) HandleDeviceAvailability(client mqtt.Client, msg mqtt.Mess
 		return
 	}
 
-	if location != nil && location.ID != 0 {
+	if location != nil && *location.ID != 0 {
 		// Construct payload for the monitoring start command
 		payload := map[string]interface{}{
 			"device_id":   deviceID,

@@ -2,9 +2,11 @@
 package handlers
 
 import (
+	"CapIot-api/internal/models"
 	"CapIot-api/internal/service"
-	"encoding/json"
+	"CapIot-api/internal/utils"
 	"github.com/gorilla/mux"
+	"log"
 	"net/http"
 )
 
@@ -16,7 +18,7 @@ type assignDeviceRequest struct {
 }
 
 // Corrected NewDeviceHandler to accept the interface type
-func NewDeviceHandler(deviceService service.DeviceService) *DeviceHandler {
+func NewDeviceHandler(deviceService *service.DefaultDeviceService) *DeviceHandler {
 	return &DeviceHandler{
 		deviceService: deviceService,
 	}
@@ -24,160 +26,124 @@ func NewDeviceHandler(deviceService service.DeviceService) *DeviceHandler {
 
 func (h *DeviceHandler) GetAllDevices(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Method not allowed", nil)
 		return
 	}
 	devices, err := h.deviceService.GetAllDevices()
 	if err != nil {
-		http.Error(w, "Error fetching devices", http.StatusInternalServerError)
+		utils.RespondWithError(w, http.StatusInternalServerError, "Error fetching devices", map[string]string{"error": err.Error()})
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(devices)
+	utils.RespondWithJSON(w, http.StatusOK, devices)
 }
 
-func (h *DeviceHandler) AssignDeviceToLocation(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+func (h *DeviceHandler) DeleteDevice(writer http.ResponseWriter, request *http.Request) {
+	log.Printf("Received %s request to delete device", request.Method)
+
+	if request.Method != http.MethodDelete {
+		log.Printf("Method %s not allowed...", request.Method)
+		utils.RespondWithError(writer, http.StatusMethodNotAllowed, "Method not allowed", nil)
 		return
 	}
 
-	// Extract the LocationID from the URL path
-	vars := mux.Vars(r)
-	locationIDStr, ok := vars["deviceID"]
+	vars := mux.Vars(request)
+	deviceID, ok := vars["deviceID"]
 	if !ok {
-		http.Error(w, "Missing locationId in URL", http.StatusBadRequest)
+		log.Printf("Missing device ID in path")
+		utils.RespondWithError(writer, http.StatusBadRequest, "Missing device ID in path", nil)
 		return
 	}
 
-	var requestData assignDeviceRequest
-	if err := json.NewDecoder(r.Body).Decode(&requestData); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+	log.Printf("Attempting to delete device with ID: %s", deviceID)
+
+	if err := h.deviceService.DeleteDevice(request.Context(), deviceID); err != nil {
+		log.Printf("Failed to delete device '%s': %v", deviceID, err)
+		if apiErr, ok := err.(*models.APIError); ok {
+			utils.RespondWithError(writer, apiErr.StatusCode, apiErr.Message, apiErr.Details)
+			return
+		}
+		utils.RespondWithError(writer, http.StatusInternalServerError, "Failed to delete device", map[string]string{"error": err.Error(), "deviceID": deviceID})
 		return
 	}
 
-	if err := h.deviceService.SetDeviceToLocation(locationIDStr, requestData.LocationID); err != nil {
-		http.Error(w, "Error assigning device to location", http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Device assigned to location successfully"))
+	writer.WriteHeader(http.StatusNoContent) // Standard response for successful deletion with no body
 }
 
 func (h *DeviceHandler) GetDeviceByID(writer http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodGet {
-		http.Error(writer, "Method not allowed", http.StatusMethodNotAllowed)
+		utils.RespondWithError(writer, http.StatusMethodNotAllowed, "Method not allowed", nil)
 		return
 	}
 	vars := mux.Vars(request)
 	deviceID, ok := vars["deviceID"]
 	if !ok {
-		http.Error(writer, "Missing device ID in path", http.StatusBadRequest)
+		utils.RespondWithError(writer, http.StatusBadRequest, "Missing device ID in path", nil)
 		return
 	}
 	device, err := h.deviceService.GetDeviceByID(deviceID)
 	if err != nil {
-		http.Error(writer, "Error getting device", http.StatusInternalServerError)
+		utils.RespondWithError(writer, http.StatusInternalServerError, "Error getting device", map[string]string{"error": err.Error()})
 		return
 	}
 	if device == nil {
-		http.Error(writer, "Device not found", http.StatusNotFound)
+		utils.RespondWithError(writer, http.StatusNotFound, "Device not found", nil)
 		return
 	}
-	writer.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(writer).Encode(device); err != nil {
-		http.Error(writer, "Error encoding response", http.StatusInternalServerError)
-		return
-	}
+	utils.RespondWithJSON(writer, http.StatusOK, device)
 }
 
 func (h *DeviceHandler) GetCaptorsByDeviceID(writer http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodGet {
-		http.Error(writer, "Method not allowed", http.StatusMethodNotAllowed)
+		utils.RespondWithError(writer, http.StatusMethodNotAllowed, "Method not allowed", nil)
 		return
 	}
 	vars := mux.Vars(request)
 	deviceID, ok := vars["deviceID"]
 	if !ok {
-		http.Error(writer, "Missing device ID in path", http.StatusBadRequest)
+		utils.RespondWithError(writer, http.StatusBadRequest, "Missing device ID in path", nil)
 		return
 	}
 	captors, err := h.deviceService.GetCaptorsByDeviceID(deviceID)
 	if err != nil {
-		http.Error(writer, "Error getting captors", http.StatusInternalServerError)
+		utils.RespondWithError(writer, http.StatusInternalServerError, "Error getting captors", map[string]string{"error": err.Error()})
 		return
 	}
-	writer.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(writer).Encode(captors); err != nil {
-		http.Error(writer, "Error encoding response", http.StatusInternalServerError)
-		return
-	}
+	utils.RespondWithJSON(writer, http.StatusOK, captors)
 }
 
 func (h *DeviceHandler) GetUnassignedDevices(writer http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodGet {
-		http.Error(writer, "Method not allowed", http.StatusMethodNotAllowed)
+		utils.RespondWithError(writer, http.StatusMethodNotAllowed, "Method not allowed", nil)
 		return
 	}
 
 	unassignedDevices, err := h.deviceService.GetUnassignedDevices()
 	if err != nil {
-		http.Error(writer, "Error getting unassigned devices", http.StatusInternalServerError)
+		utils.RespondWithError(writer, http.StatusInternalServerError, "Error getting unassigned devices", map[string]string{"error": err.Error()})
 		return
 	}
 
-	writer.Header().Set("Content-Type", "application/json")
-	writer.WriteHeader(http.StatusOK) // Set status code *before* encoding
-
-	if err := json.NewEncoder(writer).Encode(unassignedDevices); err != nil {
-		http.Error(writer, "Error encoding response", http.StatusInternalServerError)
-		return
-	}
-}
-
-func (h *DeviceHandler) DeleteDevice(writer http.ResponseWriter, request *http.Request) {
-	if request.Method != http.MethodDelete {
-		http.Error(writer, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	vars := mux.Vars(request)
-	deviceID, ok := vars["deviceID"]
-	if !ok {
-		http.Error(writer, "Missing device ID in path", http.StatusBadRequest)
-		return
-	}
-
-	if err := h.deviceService.DeleteDevice(deviceID); err != nil {
-		http.Error(writer, "Error deleting device", http.StatusInternalServerError)
-		return
-	}
-
-	writer.WriteHeader(http.StatusNoContent) // No content to return
-	writer.Write([]byte("Device deleted successfully"))
-	writer.WriteHeader(http.StatusOK) // Set status code *before* encoding
-	writer.Write([]byte("Device deleted successfully"))
+	utils.RespondWithJSON(writer, http.StatusOK, unassignedDevices)
 }
 
 func (h *DeviceHandler) UnassignDeviceFromLocation(writer http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodPost {
-		http.Error(writer, "Method not allowed", http.StatusMethodNotAllowed)
+		utils.RespondWithError(writer, http.StatusMethodNotAllowed, "Method not allowed", nil)
 		return
 	}
 
 	vars := mux.Vars(request)
 	deviceID, ok := vars["deviceID"]
 	if !ok {
-		http.Error(writer, "Missing device ID in path", http.StatusBadRequest)
+		utils.RespondWithError(writer, http.StatusBadRequest, "Missing device ID in path", nil)
 		return
 	}
 
 	if err := h.deviceService.UnassignDeviceFromLocation(deviceID); err != nil {
-		http.Error(writer, "Error unassigning device from location", http.StatusInternalServerError)
+		utils.RespondWithError(writer, http.StatusInternalServerError, "Error unassigning device from location", map[string]string{"error": err.Error()})
 		return
 	}
 
 	writer.WriteHeader(http.StatusOK)
-	writer.Write([]byte("Device unassigned from location successfully"))
+	writer.Write([]byte("Device unassigned from location successfully")) // Could also use RespondWithJSON for consistency
 }

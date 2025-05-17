@@ -19,15 +19,17 @@ type AuthService interface {
 
 // DefaultAuthService handles the business logic for user authentication
 type DefaultAuthService struct {
-	authRepo *repository.AuthRepository // Hold a pointer
-	userRepo dao.UserDAO
+	authRepo   *repository.AuthRepository // Hold a pointer
+	userRepo   dao.UserDAO
+	deviceRepo dao.DeviceDAO
 }
 
 // NewAuthService creates a new DefaultAuthService
-func NewAuthService(authRepo *repository.AuthRepository, userRepo dao.UserDAO) *DefaultAuthService {
+func NewAuthService(authRepo *repository.AuthRepository, userRepo dao.UserDAO, deviceRepo *repository.PostgresDeviceDAO) *DefaultAuthService {
 	return &DefaultAuthService{
-		authRepo: authRepo,
-		userRepo: userRepo,
+		authRepo:   authRepo,
+		userRepo:   userRepo,
+		deviceRepo: deviceRepo,
 	}
 }
 
@@ -60,10 +62,15 @@ func (s *DefaultAuthService) Login(email, password string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to get user locations: %w", err)
 	}
+
 	// Extract location IDs
 	locationIDs := make([]int, len(locations))
 	for i, location := range locations {
-		locationIDs[i] = location.ID
+		if location.ID != nil {
+			locationIDs[i] = *location.ID // Dereference the pointer to get the int value
+		} else {
+			log.Printf("Location ID is nil for user %d", userID)
+		}
 	}
 
 	// Check if the user does not exist in the database
@@ -127,6 +134,3 @@ func (s *DefaultAuthService) GetUserRoles(ctx context.Context, auth0UserID strin
 	}
 	return roles, nil
 }
-
-// Ensure DefaultAuthService implements the AuthService interface
-var _ AuthService = (*DefaultAuthService)(nil)

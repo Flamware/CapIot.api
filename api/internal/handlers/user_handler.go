@@ -16,7 +16,7 @@ type UserHandler struct {
 	userService service.UserService
 }
 
-func NewUserHandler(userService service.UserService) *UserHandler {
+func NewUserHandler(userService *service.DefaultUserService) *UserHandler {
 	return &UserHandler{
 		userService: userService,
 	}
@@ -149,7 +149,7 @@ func (h *UserHandler) AsignUser(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetUserLocations handles the request to retrieve all locations for a user.
-func (h *UserHandler) GetUserLocations(w http.ResponseWriter, r *http.Request) {
+func (h *UserHandler) GetUsersLocations(w http.ResponseWriter, r *http.Request) {
 	// Extract the user ID from the JWT claims
 	userClaims, ok := r.Context().Value(middleware.UserClaimsContextKey).(jwt.MapClaims)
 	if !ok {
@@ -163,6 +163,36 @@ func (h *UserHandler) GetUserLocations(w http.ResponseWriter, r *http.Request) {
 	}
 	userID := int(userIDFloat)
 	log.Printf("GetUserLocations: Extracted User ID from claims: %d", userID)
+	// Call the service to get user locations
+	locations, err := h.userService.GetUsersLocations(r.Context(), 0, 0, "")
+	if err != nil {
+		http.Error(w, "Failed to get user locations", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(locations); err != nil {
+		log.Printf("GetUserLocations: Failed to encode locations to JSON: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	log.Println("GetUserLocations: Successfully returned user locations")
+}
+
+// GetUserLocations handles the request to retrieve all locations for a user.
+func (h *UserHandler) GetUserLocations(w http.ResponseWriter, r *http.Request) {
+	// Extract the user ID from the JWT claims
+	userClaims, ok := r.Context().Value(middleware.UserClaimsContextKey).(jwt.MapClaims)
+	if !ok {
+		http.Error(w, "Invalid user claims", http.StatusInternalServerError)
+		return
+	}
+	userIDFloat, ok := userClaims["id"].(float64)
+	if !ok {
+		http.Error(w, "Invalid user ID", http.StatusInternalServerError)
+		return
+	}
+	userID := int(userIDFloat)
+
 	// Call the service to get user locations
 	locations, err := h.userService.GetUserLocations(userID)
 	if err != nil {

@@ -3,7 +3,10 @@ package service
 import (
 	"CapIot-api/internal/dao"
 	"CapIot-api/internal/models"
+	"CapIot-api/internal/repository"
+	"context"
 	"fmt"
+	"log"
 )
 
 // UserService defines the interface for user-related business logic
@@ -15,17 +18,20 @@ type UserService interface {
 	GetAllUsers() ([]models.User, error)
 	AsignUser(userID, locationID int) error
 	GetUserLocations(userID int) ([]models.Location, error)
+	GetUsersLocations(ctx context.Context, page int, limit int, term string) (map[string]interface{}, error)
 }
 
 // DefaultUserService is the concrete implementation of the UserService interface
 type DefaultUserService struct {
-	userDAO dao.UserDAO
+	userDAO  dao.UserDAO
+	authRepo *repository.AuthRepository
 }
 
 // NewUserService creates a new DefaultUserService instance, injecting the UserDAO
-func NewUserService(userDAO dao.UserDAO) UserService {
+func NewUserService(userDAO dao.UserDAO, authRepo *repository.AuthRepository) *DefaultUserService {
 	return &DefaultUserService{
-		userDAO: userDAO,
+		userDAO:  userDAO,
+		authRepo: authRepo,
 	}
 }
 
@@ -89,6 +95,50 @@ func (s *DefaultUserService) AsignUser(userID, locationID int) error {
 		return fmt.Errorf("failed to assign user with ID %d to location with ID %d: %w", userID, locationID, err)
 	}
 	return nil
+}
+
+// GetUsersLocations retrieves users and their locations
+func (s *DefaultUserService) GetUsersLocations(ctx context.Context, page int, limit int, term string) (map[string]interface{}, error) {
+	log.Printf("GetUsersLocations called with page: %d, limit: %d, search: '%s'", page, limit, term)
+
+	// Calculate offset
+	offset := (page - 1) * limit
+
+	// Fetch paginated and filtered data from the repository
+	users, err := s.userDAO.FindAllWithLocations(ctx, limit, offset, term)
+	if err != nil {
+		log.Printf("Error fetching paginated and filtered data: %v", err)
+		return nil, err
+	}
+	// for each user, append the role based on Auth0ID using GetUserRoles in authRepo
+	for _, user := range users {
+		roles, err := s.authRepo.GetUserRolesByAuth0ID(user.Auth0ID)
+		if err != nil {
+			log.Printf("Error fetching roles for user %s: %v", user.Auth0ID, err)
+			return nil, err
+		}
+		user.Role = roles
+		log.Printf("User %s has roles: %v", user.Auth0ID, roles)
+	}
+
+	// Fetch total count of items based on the search criteria
+	totalUsers, err := s.userDAO.CountAll(ctx, term) // Update CountAll to accept search
+	if err != nil {
+		log.Printf("Error fetching total count with search: %v", err)
+		return nil, err
+	}
+
+	totalPages := (totalUsers + limit - 1) / limit
+
+	response := map[string]interface{}{
+		"data":        users,
+		"currentPage": page,
+		"pageSize":    limit,
+		"totalItems":  totalUsers,
+		"totalPages":  totalPages,
+	}
+
+	return response, nil
 }
 
 // GetUserLocations retrieves all locations assigned to a user
