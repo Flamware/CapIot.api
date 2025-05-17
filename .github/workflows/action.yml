@@ -54,14 +54,6 @@ jobs:
           location: europe-west9
           project_id: awesome-vigil-454917-q7
 
-      - name: Create/Update Flyway Migration ConfigMap
-        run: |
-          ls
-           kubectl create configmap flyway-migration-scripts \
-              --namespace=capiot \
-              --from-file=${{ github.workspace }}/database/migration \
-              --dry-run=client -o yaml | kubectl apply -f -
-
       - name: Update Kubernetes deployment and YAML
         run: |
           kubectl set image deployment/api-backend-deployment api=flamware/capiot-api:${{ steps.docker_build.outputs.image_tag }} -n capiot
