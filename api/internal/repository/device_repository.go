@@ -2,7 +2,10 @@ package repository
 
 import (
 	"CapIot-api/internal/models"
+	"context"
 	"database/sql"
+	"fmt"
+	"strings"
 )
 
 // DeviceDAO defines the interface for all device and related data access operations.
@@ -13,15 +16,17 @@ type DeviceDAO interface {
 	CreateCaptor(captor *models.Captor) (*models.Captor, error)
 	GetCaptorByID(id string) (*models.Captor, error)
 	GetAllDevices() ([]*models.Device, error) // Ensure this
-	SetDeviceToLocation(deviceID string, locationID int) error
+	SetDeviceToLocation(ctx context.Context, id string, id2 int) error
 	InsertDeviceCaptor(captor *models.DeviceCaptor) error
 	UpdateDeviceOperationalStatus(id string, status models.OperationalStatus) error
 	GetDeviceByID(id string) (*models.Device, error)
 	GetCaptorsByDeviceID(id string) ([]*models.Captor, error)
 	GetUnassignedDevices() ([]*models.Device, error)
 	DeleteDevice(id string) error
-	UnassignDeviceFromLocation(id string) error
 	GetLocationByDeviceID(id string) (*models.Location, error)
+	UnassignDeviceFromLocation(id string) error
+	FindAllWithSensorsAndLocations(ctx context.Context, limit int, offset int, search string) ([]*models.DeviceWithSensorsAndLocation, error)
+	CountAll(ctx context.Context, search string) (int, error)
 }
 
 // PostgresDeviceDAO implements the DeviceDAO interface using PostgreSQL.
@@ -89,12 +94,16 @@ func (d *PostgresDeviceDAO) IsDeviceAssigned(deviceID string) (bool, error) {
 	return assigned, err
 }
 
-func (d *PostgresDeviceDAO) SetDeviceToLocation(deviceID string, locationID int) error {
-	// You'll need to handle updating previous current location if needed
-	_, err := d.db.Exec("INSERT INTO device_location (device_id, location_id, assigned_at, is_current) VALUES ($1, $2, NOW(), true)", deviceID, locationID)
-	return err
+func (d *PostgresDeviceDAO) SetDeviceToLocation(ctx context.Context, deviceID string, locationID int) error {
+	_, err := d.db.ExecContext(ctx, "INSERT INTO device_location (device_id, location_id, assigned_at, is_current) VALUES ($1, $2, NOW(), true)", deviceID, locationID)
+	if err != nil {
+		// Log the error with context. This is crucial for debugging.
+		fmt.Printf("Error setting device '%s' to location '%d': %v\n", deviceID, locationID, err)
+		// Return the error. The calling service layer will decide what to do with it.
+		return fmt.Errorf("failed to set device '%s' to location '%d': %w", deviceID, locationID, err)
+	}
+	return nil // Return nil to indicate success
 }
-
 func (d *PostgresDeviceDAO) InsertCaptor(captor *models.Captor) (*models.Captor, error) {
 	err := d.db.QueryRow("INSERT INTO captors (captor_type, captor_type) VALUES ($1, $2) RETURNING captor_id", captor.CaptorType).Scan(&captor.CaptorID)
 	if err != nil {
@@ -252,4 +261,127 @@ func (d *PostgresDeviceDAO) GetLocationByDeviceID(id string) (*models.Location, 
 		return nil, err
 	}
 	return &location, nil
+}
+func (d *PostgresDeviceDAO) FindAllWithSensorsAndLocations(ctx context.Context, limit int, offset int, search string) ([]*models.DeviceWithSensorsAndLocation, error) {
+	var devicesWithInfo []*models.DeviceWithSensorsAndLocation
+	var query strings.Builder
+	args := []interface{}{limit, offset}
+	argCount := 3
+
+	query.WriteString(`
+       SELECT
+          d.device_id, d.last_seen, d.status, d.created_at,
+          l.location_id, l.location_name
+       FROM devices d
+       LEFT JOIN device_location dl ON d.device_id = dl.device_id AND dl.is_current = true
+       LEFT JOIN locations l ON dl.location_id = l.location_id
+    `)
+
+	if search != "" {
+		query.WriteString(`
+          WHERE
+             LOWER(d.device_id) LIKE LOWER('%' || $` + fmt.Sprintf("%d", argCount) + ` || '%') OR
+             EXISTS (
+                SELECT 1
+                FROM device_captors dc
+                JOIN captors c ON dc.captor_id = c.captor_id
+                WHERE dc.device_id = d.device_id AND LOWER(c.captor_type) LIKE LOWER('%' || $` + fmt.Sprintf("%d", argCount) + ` || '%')
+             ) OR
+             LOWER(l.location_name) LIKE LOWER('%' || $` + fmt.Sprintf("%d", argCount) + ` || '%')
+       `)
+		args = append(args, search)
+		argCount++
+	}
+
+	query.WriteString(`
+       LIMIT $1
+       OFFSET $2
+    `)
+
+	rows, err := d.db.QueryContext(ctx, query.String(), args...)
+	if err != nil {
+		return nil, fmt.Errorf("query failed: %w", err)
+	}
+	defer rows.Close()
+
+	deviceMap := make(map[string]*models.DeviceWithSensorsAndLocation)
+
+	for rows.Next() {
+		var deviceWithInfo models.DeviceWithSensorsAndLocation
+		var location models.Location
+		var device models.Device // Still need to scan into a Device struct
+		if err := rows.Scan(
+			&device.DeviceID, &device.LastSeen, &device.Status, &device.CreatedAt,
+			&location.ID, &location.Name,
+		); err != nil {
+			return nil, fmt.Errorf("scan failed: %w", err)
+		}
+
+		deviceWithCaptors := &models.DeviceWithCaptors{
+			Device: &device,
+		}
+
+		if existingDevice, ok := deviceMap[device.DeviceID]; ok {
+			existingDevice.Location = &location
+		} else {
+			deviceWithInfo.DeviceWithCaptors = deviceWithCaptors // Assign DeviceWithCaptors
+			deviceWithInfo.Location = &location
+			ptr := &deviceWithInfo
+			deviceMap[device.DeviceID] = ptr
+			devicesWithInfo = append(devicesWithInfo, ptr)
+		}
+	}
+
+	if err := rows.Err(); err != nil { // Check for errors during row iteration
+		return nil, fmt.Errorf("error during row iteration: %w", err)
+	}
+
+	// Fetch captors for each device
+	for _, deviceInfo := range devicesWithInfo {
+		if deviceInfo.DeviceWithCaptors != nil && deviceInfo.DeviceWithCaptors.Device != nil {
+			captors, err := d.GetCaptorsByDeviceID(deviceInfo.DeviceWithCaptors.Device.DeviceID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get captors for device %s: %w", deviceInfo.DeviceWithCaptors.Device.DeviceID, err)
+			}
+			deviceInfo.DeviceWithCaptors.Captors = captors // Assign captors to DeviceWithCaptors
+		}
+	}
+
+	return devicesWithInfo, nil // Will return an empty slice if no devices were found
+}
+
+func (d *PostgresDeviceDAO) CountAll(ctx context.Context, search string) (int, error) {
+	var count int
+	var query strings.Builder
+	args := []interface{}{}
+	argCount := 1
+
+	query.WriteString("SELECT COUNT(d.device_id) FROM devices d ")
+
+	if search != "" {
+		query.WriteString(`
+			WHERE
+				LOWER(d.device_id) LIKE LOWER('%' || $` + fmt.Sprintf("%d", argCount) + ` || '%') OR
+				EXISTS (
+					SELECT 1
+					FROM device_captors dc
+					JOIN captors c ON dc.captor_id = c.captor_id
+					WHERE dc.device_id = d.device_id AND LOWER(c.captor_type) LIKE LOWER('%' || $` + fmt.Sprintf("%d", argCount) + ` || '%')
+				) OR
+				EXISTS (
+					SELECT 1
+					FROM device_location dl
+					JOIN locations l ON dl.location_id = l.location_id
+					WHERE dl.device_id = d.device_id AND dl.is_current = true AND LOWER(l.location_name) LIKE LOWER('%' || $` + fmt.Sprintf("%d", argCount) + ` || '%')
+				)
+		`)
+		args = append(args, search)
+		argCount++
+	}
+
+	err := d.db.QueryRowContext(ctx, query.String(), args...).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count devices: %w", err)
+	}
+	return count, nil
 }
