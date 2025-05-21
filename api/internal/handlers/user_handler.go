@@ -207,3 +207,43 @@ func (h *UserHandler) GetUserLocations(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Println("GetUserLocations: Successfully returned user locations")
 }
+
+// UpdateUserAndLocation Function to update a user
+func (h *UserHandler) UpdateUserAndLocation(w http.ResponseWriter, r *http.Request) {
+	// Extract the user ID from the URL parameters
+	vars := mux.Vars(r)
+	userIDStr := vars["userID"]
+
+	// Extract the location ID from the request body
+	var requestBody struct {
+		LocationIDs []int  `json:"locations"`
+		Name        string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Convert userID to int
+	userIDInt, err := strconv.Atoi(userIDStr)
+	if err != nil {
+		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		return
+	}
+
+	// Check if the user ID and location ID are valid (greater than zero)
+	if userIDInt <= 0 || len(requestBody.LocationIDs) == 0 {
+		http.Error(w, "Invalid user ID or location ID", http.StatusBadRequest)
+		return
+	}
+
+	// Call the service to assign the user to the location using the integer IDs
+	err = h.userService.UpdateUserAndLocation(userIDInt, requestBody.LocationIDs, requestBody.Name)
+	if err != nil {
+		log.Printf("Failed to update user %d to location %d: %v", userIDInt, requestBody.LocationIDs, err)
+		http.Error(w, "Failed to update user to location", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent) // No content response
+}

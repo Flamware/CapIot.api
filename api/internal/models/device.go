@@ -41,9 +41,9 @@ type DeviceWithCaptors struct {
 type OperationalStatus string
 
 const (
-	StatusOffline OperationalStatus = "offline"
-	StatusRunning OperationalStatus = "running"
-	StatusStopped OperationalStatus = "stopped"
+	StatusRunning OperationalStatus = "Running"
+	StatusStopped OperationalStatus = "Stopped"
+	StatusIdle    OperationalStatus = "Idle"
 	// Add other statuses as needed
 )
 

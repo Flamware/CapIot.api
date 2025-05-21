@@ -19,6 +19,7 @@ type UserService interface {
 	AsignUser(userID, locationID int) error
 	GetUserLocations(userID int) ([]models.Location, error)
 	GetUsersLocations(ctx context.Context, page int, limit int, term string) (map[string]interface{}, error)
+	UpdateUserAndLocation(UserID int, newLocationID []int, newName string) error
 }
 
 // DefaultUserService is the concrete implementation of the UserService interface
@@ -148,4 +149,19 @@ func (s *DefaultUserService) GetUserLocations(userID int) ([]models.Location, er
 		return nil, fmt.Errorf("failed to get locations for user with ID %d: %w", userID, err)
 	}
 	return locations, nil
+}
+
+// updateUserAndLocation updates the user's location and name
+func (s *DefaultUserService) UpdateUserAndLocation(UserID int, newLocationID []int, newName string) error {
+	// Update the user's location
+	if err := s.userDAO.UpdateUserLocation(UserID, newLocationID); err != nil {
+		return fmt.Errorf("failed to update user location: %w", err)
+	}
+
+	// Update the user's name
+	if err := s.userDAO.UpdateUserName(UserID, newName); err != nil {
+		return fmt.Errorf("failed to update user name: %w", err)
+	}
+
+	return nil
 }

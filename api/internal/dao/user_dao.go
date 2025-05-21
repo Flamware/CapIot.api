@@ -18,4 +18,6 @@ type UserDAO interface {
 	GetUserLocations(userID int) ([]models.Location, error)
 	FindAllWithLocations(ctx context.Context, limit int, offset int, search string) ([]*models.UserLocations, error)
 	CountAll(ctx context.Context, search string) (int, error)
+	UpdateUserLocation(id int, id2 []int) error
+	UpdateUserName(id int, name string) error
 }

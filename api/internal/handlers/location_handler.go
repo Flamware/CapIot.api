@@ -64,21 +64,43 @@ func (h *AdminHandler) GetAllLocations(writer http.ResponseWriter, request *http
 		http.Error(writer, "Failed to send response", http.StatusInternalServerError)
 	}
 }
-
 func (h *LocationHandler) CreateLocation(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	var location models.Location
-	if err := json.NewDecoder(r.Body).Decode(&location); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+
+	// Ensure Content-Type is application/json
+	if r.Header.Get("Content-Type") != "application/json" {
+		http.Error(w, "Unsupported Content-Type", http.StatusUnsupportedMediaType)
 		return
 	}
+
+	// Decode JSON body into Location struct
+	var location models.Location
+	if err := json.NewDecoder(r.Body).Decode(&location); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	// Validate input
+	if location.Name == nil || *location.Name == "" {
+		http.Error(w, "Location name is required", http.StatusBadRequest)
+		return
+	}
+	if location.Description == nil {
+		empty := ""
+		location.Description = &empty
+	}
+
+	log.Printf("Creating location: %+v\n", location)
+
+	// Call service to create location
 	if err := h.locationService.CreateLocation(location); err != nil {
 		http.Error(w, "Error creating location", http.StatusInternalServerError)
 		return
 	}
+
 	w.WriteHeader(http.StatusCreated)
 	w.Write([]byte("Location created successfully"))
 }

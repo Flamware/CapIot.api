@@ -78,7 +78,7 @@ func (d *PostgresDeviceDAO) GetDeviceByDeviceID(id string) (*models.Device, erro
 }
 
 func (d *PostgresDeviceDAO) UpdateDeviceLastSeenAndStatus(deviceID string) error {
-	_, err := d.db.Exec("UPDATE devices SET last_seen = NOW(), status = $1 WHERE device_id = $2", "online", deviceID) // Assuming status becomes online on availability
+	_, err := d.db.Exec("UPDATE devices SET last_seen = NOW(), status = $1 WHERE device_id = $2", "stopped", deviceID) // Assuming status becomes online on availability
 	return err
 }
 

@@ -30,7 +30,7 @@ func SetupMQTTRoutes(client mqtt.Client, mqttHandler *handlers.MqttHandler) {
 	log.Printf("Subscribed to topic: %s\n", lwtTopic)
 
 	statusTopic := "devices/status/+"
-	if token := client.Subscribe(statusTopic, 1, mqttHandler.HandleDeviceStatus); token.Wait() && token.Error() != nil {
+	if token := client.Subscribe("devices/status/+", 1, mqttHandler.HandleDeviceStatus); token.Wait() && token.Error() != nil {
 		log.Fatalf("Error subscribing to status topic: %v", token.Error())
 	}
 	log.Printf("Subscribed to topic: %s\n", statusTopic)

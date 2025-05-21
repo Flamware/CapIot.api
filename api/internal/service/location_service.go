@@ -26,18 +26,7 @@ func NewLocationService(dao dao.LocationDAO) *DefaultLocationService {
 }
 
 func (s *DefaultLocationService) CreateLocation(location models.Location) error {
-	if location.ID != nil {
-
-	}
-	exists, err := s.dao.LocationExists(*location.ID)
-	if err != nil {
-		return err
-	}
-
-	if exists {
-		return nil
-	}
-
+	log.Printf("CreateLocation called with location: %+v", location)
 	return s.dao.InsertLocation(location)
 }
 

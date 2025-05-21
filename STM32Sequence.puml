@@ -1,0 +1,81 @@
+@startuml
+' Styling for a cleaner look
+skinparam ParticipantPadding 20
+skinparam BoxPadding 10
+skinparam NoteBorderColor #ADD1B2
+skinparam NoteBackgroundColor #FEFECE
+skinparam ArrowColor #4CAF50
+skinparam LineColor #4CAF50
+skinparam Shadowing false
+
+title Device Connectivity Workflow (Detailed with API and User Interaction)
+
+box "IoT System Backend" #LightBlue
+    participant "Device" as D
+    participant "Device Broker" as DB
+    database "Data Store" as DS
+end box
+
+box "Application Layer" #LightGreen
+    participant "API Gateway" as API
+    actor "User/Frontend" as U
+end box
+
+note right of D : Sensor data, telemetry, events
+
+' Device to Device Broker (MQTT) - Initial Connection & Availability
+D -[#blue]> DB : Connect (MQTT)\n(with LWT: devices/lwt/deviceID)
+activate DB
+
+
+D -[#blue]> DB : Publish Availability\n(topic: devices/available/deviceID, QoS 1)
+note right of D : Announces device presence & capabilities.
+
+' Device subscribes to its status topic immediately after connect
+D -[#blue]> DB : Subscribe to Status\n(topic: devices/status/deviceID, QoS 1)
+note right of D : Device waits for API's status command.
+
+DB -[#green]> API : Forward Availability\n(from subscription)
+activate API
+note left of API : API Gateway processes availability.
+
+API -[#green]> DS : Insert Device Info\n(from Availability)
+activate DS
+DS --[#green]> API : Device Info Stored Confirmation
+deactivate DS
+note left of API : API now knows about the device.
+
+API -[#purple]> U : Display Device Available\n(on Frontend)
+activate U
+U -[#purple]> API : User Command: Set Device Status\n(e.g., "Start Running")
+deactivate U
+
+API -[#orange]> DB : Publish Status Command\n(topic: devices/status/deviceID, payload: {status: "Running", location_id: "XYZ"})
+deactivate API
+DB -[#orange]> D : Deliver Status Command
+deactivate DB
+
+' Device to Device Broker (MQTT) - Status Update (in response to command)
+activate D
+D -[#blue]> DB : Publish Status Update\n(topic: devices/status/deviceID, QoS 1, on change)
+note right of D : Device confirms its operational state (e.g., 'Running', 'Stopped').
+DB -[#green]> API : Forward Status Update\n(from subscription)
+note left of API : API Gateway processes/acknowledges internally.
+deactivate D
+
+note left of DB : MQTT: Data ingestion, routing, processing, device management.
+
+' Device to API Gateway (HTTP POST) - Sensor Data
+D -[#red]> API : Send Sensor Data (HTTP POST)\n(path: /influxdb/sensordata, every 5s when 'Running')
+activate API
+note right of API : Receives aggregated sensor data from devices.
+API --[#red]> D : HTTP Response (2xx/4xx Status Code)\n(acknowledges data reception)
+deactivate API
+
+' API Gateway to Device Broker (for commands/data) - General interaction
+API -[#orange]> DB : Request Data / Forward Command\n(e.g., to devices/status/deviceID for control)
+activate DB
+DB --[#orange]> API : Data / Command Acknowledgment
+deactivate DB
+
+@enduml

@@ -9,8 +9,9 @@ import (
 )
 
 // SetupAdminRoutes sets up the admin-protected route
-func SetupAdminRoutes(r *mux.Router, adminHandler *handlers.AdminHandler,
+func SetupAdminRoutes(r *mux.Router, adminHandler *handlers.AdminHandler, userHandler *handlers.UserHandler,
 	locationHandler *handlers.LocationHandler,
+	mqttHandler *handlers.MqttHandler,
 	authService service.AuthService) {
 	adminRouter := r.PathPrefix("/api/admin").Subrouter()
 
@@ -41,6 +42,9 @@ func SetupAdminRoutes(r *mux.Router, adminHandler *handlers.AdminHandler,
 	// Define the handler for assigning a device to a location
 	adminRouter.HandleFunc("/assign-device", adminHandler.AssignDeviceToLocation).Methods(http.MethodPost)
 
+	// Define the handler for assigning a user to a location
+	adminRouter.HandleFunc("/users/{userID}", userHandler.UpdateUserAndLocation).Methods(http.MethodPut)
+
 	// Define the handler for deleting a device
 	adminRouter.HandleFunc("/device/{deviceID}", adminHandler.DeleteDevice).Methods(http.MethodDelete)
 
@@ -49,4 +53,10 @@ func SetupAdminRoutes(r *mux.Router, adminHandler *handlers.AdminHandler,
 
 	// Define the handler for modifying a location
 	adminRouter.HandleFunc("/location/{locationID}", adminHandler.ModifyLocation).Methods(http.MethodPut)
+
+	// Define the handler for creating a location
+	adminRouter.HandleFunc("/location/create", locationHandler.CreateLocation).Methods(http.MethodPost)
+
+	// Define the handler for starting monitoring for a device
+	adminRouter.HandleFunc("/devices/{deviceID}", mqttHandler.SetStatus).Methods(http.MethodPatch)
 }

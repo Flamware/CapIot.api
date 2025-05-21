@@ -288,3 +288,59 @@ func (r *PostgresUserRepository) CountAll(ctx context.Context, search string) (i
 	}
 	return count, nil
 }
+
+// UpdateUserLocation updates the user's location in the database.
+func (r *PostgresUserRepository) UpdateUserLocation(userID int, locationIDs []int) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	tx, err := r.db.BeginTx(ctx, nil) // Start a transaction
+	if err != nil {
+		log.Printf("Error starting transaction for user %d location update: %v\n", userID, err)
+		return err
+	}
+	defer tx.Rollback() // Rollback on error, if Commit is not called
+
+	// 1. Delete all existing locations for the user
+	deleteQuery := `DELETE FROM user_location WHERE user_id = $1`
+	_, err = tx.ExecContext(ctx, deleteQuery, userID)
+	if err != nil {
+		log.Printf("Error deleting existing locations for user %d: %v\n", userID, err)
+		return err
+	}
+	log.Printf("Deleted existing locations for user %d.\n", userID) // Log deletion
+
+	// 2. Insert new locations for each ID in the slice
+	insertQuery := `INSERT INTO user_location (user_id, location_id) VALUES ($1, $2)`
+	for _, locationID := range locationIDs {
+		_, err := tx.ExecContext(ctx, insertQuery, userID, locationID)
+		if err != nil {
+			log.Printf("Error inserting location %d for user %d: %v\n", locationID, userID, err)
+			return err // Rollback will be called by defer
+		}
+	}
+	log.Printf("Inserted new locations for user %d: %v.\n", userID, locationIDs) // Log insertion
+
+	if err := tx.Commit(); err != nil { // Commit the transaction
+		log.Printf("Error committing transaction for user %d location update: %v\n", userID, err)
+		return err
+	}
+
+	log.Printf("User %d updated with new locations %v.\n", userID, locationIDs)
+	return nil
+}
+
+// UpdateUserName updates the user's name in the database.
+func (r *PostgresUserRepository) UpdateUserName(id int, name string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `UPDATE users SET name = $1 WHERE id = $2`
+	_, err := r.db.ExecContext(ctx, query, name, id)
+	if err != nil {
+		log.Printf("Error updating user name: %v\n", err)
+		return err
+	}
+	log.Printf("User %d updated with new name %s.\n", id, name)
+	return nil
+}
