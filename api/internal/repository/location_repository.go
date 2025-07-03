@@ -276,7 +276,7 @@ func (r *PostgresLocationRepository) GetLocationsDevicesUsers(ctx context.Contex
 		if userID != nil {
 			location.Users = append(location.Users, &models.User{
 				ID:   *userID,
-				Name: *username,
+				Name: username,
 			})
 		}
 	}

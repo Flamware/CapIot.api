@@ -1,0 +1,48 @@
+@startuml
+skinparam titleFontSize 24
+skinparam defaultFontName "Arial"
+skinparam defaultFontSize 14
+
+title **GitHub Actions CI/CD Pipeline for API Deployment**
+
+participant "GitHub Actions Workflow" as GHA
+box "Source Code" #LightBlue
+    participant "GitHub Repository" as Repo
+end box
+box "Container Registry" #LightGreen
+    participant "Docker Hub" as DockerHub
+end box
+box "Google Cloud Platform" #LightSalmon
+    participant "Google Cloud SDK" as GCSDK
+    participant "Google Kubernetes Engine (GKE)" as GKE
+    participant "Kubernetes API" as K8sAPI
+end box
+
+Repo --> GHA : Push to main / Workflow Dispatch (Trigger)
+
+GHA -> GHA : Checkout Code
+GHA -> GCSDK : Install GCP SDK & GKE Auth Plugin
+GHA -> GHA : Setup Docker Buildx
+GHA -> DockerHub : Login (using secrets)
+
+activate GHA
+GHA -> GHA : Navigate to 'api' directory
+GHA -> DockerHub : **Build & Push Docker Image** (flamware/capiot-api:$TAG)
+deactivate GHA
+note right of GHA
+    Image Tag: YYYYMMDDHHMMSS-SHA8
+    Output 'image_tag' for later steps
+end note
+
+GHA -> GHA : Setup Kubectl
+GHA -> GCSDK : Authenticate to GCP (using GKE_CREDENTIALS)
+GHA -> GKE : Get GKE Credentials\n(cluster: capiot-eu-cluster, location: europe-west9)
+
+activate GKE
+GHA -> K8sAPI : **Create/Update ConfigMap**\n(flyway-migration-scripts, namespace: capiot,\n from database/migration files)
+GHA -> K8sAPI : **Update Deployment**\n(api-backend-deployment to use new image tag)
+K8sAPI -> GKE : Rollout Status Check
+GHA -> K8sAPI : Get Deployment YAML (for logging/debugging)
+deactivate GKE
+
+@enduml

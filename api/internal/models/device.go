@@ -12,18 +12,27 @@ type Device struct {
 
 // Captor represents the captor type data.
 type Captor struct {
-	CaptorID   string `json:"captor_id" db:"captor_id"`
-	CaptorType string `json:"captor_type" db:"captor_type"`
+	CaptorID     string  `json:"captor_id" db:"captor_id"`
+	CaptorType   string  `json:"captor_type" db:"captor_type"`
+	MinThreshold float64 `json:"min_threshold,omitempty" db:"min_threshold"`
+	MaxThreshold float64 `json:"max_threshold,omitempty" db:"max_threshold"`
+}
+
+type CaptorRangeUpdate struct {
+	CaptorID     string  `json:"captor_id" db:"captor_id"`
+	MinThreshold float64 `json:"min_threshold,omitempty" db:"min_threshold"`
+	MaxThreshold float64 `json:"max_threshold,omitempty" db:"max_threshold"`
 }
 
 // DeviceCaptor represents the link between a device and a specific captor instance.
 type DeviceCaptor struct {
-	DeviceID string `json:"device_id" db:"device_id"`
-	CaptorID string `json:"captor_id" db:"captor_id"`
+	DeviceID     string  `json:"device_id" db:"device_id"`
+	CaptorID     string  `json:"captor_id" db:"captor_id"`
+	MinThreshold float64 `json:"min_threshold,omitempty" db:"min_threshold"`
+	MaxThreshold float64 `json:"max_threshold,omitempty" db:"max_threshold"`
 }
 
-// DeviceLocation represents the link between a device and a location,
-// including the assignment timestamp and whether it's the current location.
+// DeviceLocation represents the link between a device and a location.
 type DeviceLocation struct {
 	DeviceID   string    `json:"device_id" db:"device_id"`
 	LocationID int       `json:"location_id" db:"location_id"`
@@ -44,17 +53,15 @@ const (
 	StatusRunning OperationalStatus = "Running"
 	StatusStopped OperationalStatus = "Stopped"
 	StatusIdle    OperationalStatus = "Idle"
-	// Add other statuses as needed
 )
 
-// DeviceWithSensorsAndLocation is a composite model to represent a device
-// along with its associated sensors and current location. This is useful
-// for API responses that need to return this combined information.
+// DeviceWithSensorsAndLocation represents a device with its captors and location.
 type DeviceWithSensorsAndLocation struct {
 	*DeviceWithCaptors
 	Location *Location `json:"location,omitempty"`
 }
 
+// AssignDeviceToLocationRequest is used for location assignment via API.
 type AssignDeviceToLocationRequest struct {
 	DeviceID   string `json:"device_id"`
 	LocationID int    `json:"location_id"`

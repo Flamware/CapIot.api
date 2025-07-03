@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: api-deployment
-  namespace: capiot-app
+  namespace: capiot
 spec:
   replicas: 1
   selector:
@@ -15,9 +15,23 @@ spec:
     spec:
       containers:
         - name: api
-          image: flamware/capiot-api:latest
+          image: flamware/capiot-api:4
           imagePullPolicy: Always
+          env:
+            # Explicitly define database credentials and name directly
+            # NOTE: Hardcoding sensitive information directly in the Deployment YAML
+            # is generally not recommended for production environments.
+            # Secrets should be managed using Kubernetes Secrets or a secrets management solution.
+            - name: DB_USER
+              value: "admin"
+            - name: DB_PASSWORD
+              value: "admin"
+            - name: DB_NAME
+              value: "capiot"
+            - name: POSTGRES_DB
+              value: "capiot"
           envFrom:
+            # Continue to use envFrom for other secrets and configMap
             - secretRef:
                 name: api-secrets
             - configMapRef:
@@ -26,13 +40,13 @@ spec:
             - containerPort: 8080  # Matches Service port
           livenessProbe:
             httpGet:
-              path: /health
+              path: /api/health # Updated path
               port: 8080
             initialDelaySeconds: 15
             periodSeconds: 20
           readinessProbe:
             httpGet:
-              path: /ready
+              path: /api/ready # Assuming /api/ready for readiness, similar to /api/health
               port: 8080
             initialDelaySeconds: 5
             periodSeconds: 10
@@ -43,3 +57,9 @@ spec:
             limits:
               cpu: "500m"
               memory: "512Mi"
+          volumeMounts:
+            - name: token-storage
+              mountPath: /app/internal/repository/ # Mount the volume here
+      volumes:
+        - name: token-storage
+          emptyDir: {} # Use an emptyDir for temporary storage

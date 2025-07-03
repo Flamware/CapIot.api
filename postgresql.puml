@@ -1,0 +1,57 @@
+@startuml
+' PostgreSQL Deployment: Centered View on Database, Service, and Secret
+left to right direction
+
+skinparam componentStyle uml2
+skinparam backgroundColor #EEEBD
+
+cloud "Kubernetes Cluster: capiot-cluster" {
+
+    node "Namespace: capiot" {
+
+        node "Configuration & Secrets" {
+            component "PostgreSQL Secret Creation Process" as Secret_Creator
+            artifact "Kubernetes Secret: postgres-credentials" as PG_Secret
+        }
+
+        node "Database Exposure" {
+            component "PostgreSQL ClusterIP Service" as PG_Service
+        }
+
+        node "Databases" {
+            database "postgres-deployment StatefulSet (1/1)" as PostgreSQL_SS
+        }
+    }
+}
+
+' Relationships
+Secret_Creator --> PG_Secret : "Generates / Manages"
+PG_Service --> PostgreSQL_SS : "Exposes Pods"
+
+' Notes
+note top of PG_Secret
+  Contains:
+  - dbname
+  - host
+  - password
+  - port
+  - username
+  Used by applications
+  connecting to PostgreSQL.
+end note
+
+note right of PG_Service
+  Type: ClusterIP
+  Internal Service for
+  PostgreSQL access within
+  the cluster.
+end note
+
+note bottom of PostgreSQL_SS
+  Data Persistence:
+  Uses Persistent Volumes
+end note
+
+
+
+@enduml

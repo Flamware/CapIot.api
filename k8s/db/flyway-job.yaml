@@ -1,0 +1,20 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: flyway-migration
+  namespace: capiot
+spec:
+  template:
+    spec:
+      containers:
+        - name: flyway
+          image: flamware/capiot-flyway:V2
+          env:
+            - name: FLYWAY_URL
+              value: jdbc:postgresql://postgres-service:5432/capiot
+            - name: FLYWAY_USER
+              value: admin
+            - name: FLYWAY_PASSWORD
+              value: admin
+          command: ["flyway", "migrate"]
+      restartPolicy: Never

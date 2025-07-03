@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: postgres-deployment
-  namespace: capiot-app
+  namespace: capiot
 spec:
   replicas: 1
   selector:

@@ -1,0 +1,60 @@
+@startuml
+' API Backend Deployment: Centered View with Secret AND ConfigMap (Simplified)
+left to right direction
+
+skinparam componentStyle uml2
+skinparam backgroundColor #EEEBD
+
+cloud "Kubernetes Cluster: capiot-cluster" {
+
+    node "Namespace: capiot" {
+
+        node "Configuration & Credentials" {
+            artifact "Kubernetes Secret: api-secret" as API_Secret
+            artifact "Kubernetes ConfigMap: api-backend-config" as API_ConfigMap
+        }
+
+        node "API Exposure" {
+            component "API LoadBalancer Ingress" as API_Ingress
+            component "API Backend Service (ClusterIP)" as API_Service
+        }
+
+        node "API Backend Deployment" {
+            component "api-backend-deployment (2/2)" as API_Backend
+        }
+    }
+}
+
+API_Ingress --> API_Service : "External HTTP/S API Traffic"
+API_Service --> API_Backend : "Exposes Pods"
+
+' Explicit connections for configuration consumption by the API Backend
+API_Backend ..> API_Secret : "Consumes Sensitive Data (Mounted / Env Vars)"
+API_Backend ..> API_ConfigMap : "Consumes Configuration (Mounted / Env Vars)"
+
+' Notes
+note top of API_Secret
+  Contains sensitive credentials
+  (e.g., API_KEY, Auth0 Client Secret).
+  Stored securely.
+end note
+
+note right of API_Service
+  Type: ClusterIP
+  Internal Service for
+  API Backend access within
+  the cluster.
+  Targeted by Ingress.
+end note
+
+note bottom of API_Backend
+  API Backend Application
+  (Handles Token Mgmt/Verif.,
+  Device Config., Data Persist.,
+  Device Discovery, etc.)
+  Uses both Secret and ConfigMap for its configuration.
+end note
+
+
+
+@enduml

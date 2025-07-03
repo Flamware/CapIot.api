@@ -1,0 +1,64 @@
+@startuml
+' InfluxDB API Backend Deployment: Centered View with Token Secret and ConfigMap (Simplified)
+left to right direction
+
+skinparam componentStyle uml2
+skinparam backgroundColor #EEEBD
+
+cloud "Kubernetes Cluster: capiot-cluster" {
+
+    node "Namespace: capiot" {
+
+        node "Configuration & Credentials" {
+            artifact "Kubernetes Secret: influxdb-api-token" as InfluxDB_API_Token_Secret
+            artifact "Kubernetes ConfigMap: influxdb-api-config" as InfluxDB_API_ConfigMap
+        }
+
+        node "InfluxDB API Exposure" {
+            component "InfluxDB LoadBalancer Ingress" as InfluxDB_Ingress
+            component "InfluxDB API Service (ClusterIP)" as InfluxDB_API_Service
+        }
+
+        node "InfluxDB API Backend Deployment" {
+            component "api-influxdb-deployment (1/1)" as InfluxDB_API_Backend
+        }
+    }
+}
+
+InfluxDB_Ingress --> InfluxDB_API_Service : "External HTTP/S API Traffic"
+InfluxDB_API_Service --> InfluxDB_API_Backend : "Exposes Pods"
+
+' Explicit connections for configuration consumption by the InfluxDB API Backend
+InfluxDB_API_Backend ..> InfluxDB_API_Token_Secret : "Consumes API Token (Mounted / Env Vars)"
+InfluxDB_API_Backend ..> InfluxDB_API_ConfigMap : "Consumes InfluxDB URL (Mounted / Env Vars)"
+
+' Notes
+note top of InfluxDB_API_Token_Secret
+  Contains generated InfluxDB
+  API token for authentication.
+  Stored securely.
+end note
+
+note top of InfluxDB_API_ConfigMap
+  Contains:
+  - INFLUXDB_URL: influxdb-service.capiot
+  (Points to the InfluxDB database service)
+end note
+
+note right of InfluxDB_API_Service
+  Type: ClusterIP
+  Internal Service for
+  InfluxDB API access within
+  the cluster.
+  Targeted by Ingress.
+end note
+
+note bottom of InfluxDB_API_Backend
+  InfluxDB API Backend Application
+  (Handles InfluxDB interactions,
+  Token Verif., TPM2.0 Signature Decode)
+  Uses API Token for InfluxDB access
+  and ConfigMap for InfluxDB URL.
+end note
+
+@enduml

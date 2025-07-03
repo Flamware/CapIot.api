@@ -62,7 +62,7 @@ func (r *PostgresUserRepository) FindUserByID(ID int) (*models.User, error) {
 
 	var user struct {
 		ID    int
-		Name  sql.NullString
+		Name  *string // Name can be NULL, so use a pointer
 		Email string
 		Role  sql.NullString
 	}
@@ -76,7 +76,7 @@ func (r *PostgresUserRepository) FindUserByID(ID int) (*models.User, error) {
 
 	return &models.User{
 		ID:    user.ID,
-		Name:  user.Name.String,
+		Name:  user.Name,
 		Email: user.Email,
 	}, nil
 }
@@ -150,7 +150,7 @@ func (r *PostgresUserRepository) GetAllUsers() ([]models.User, error) {
 			log.Printf("Error scanning user row: %v\n", err)
 			return nil, err
 		}
-		user.Name = name.String
+		user.Name = &name.String
 		list = append(list, user)
 	}
 
@@ -238,7 +238,7 @@ func (r *PostgresUserRepository) FindAllWithLocations(ctx context.Context, limit
 			log.Printf("Error scanning user location row: %v\n", err)
 			return nil, err
 		}
-
+		// If user.name is NULL, set it to an empty string
 		userLocation, ok := usersLocationMap[user.ID]
 		if !ok {
 			userLocation = &models.UserLocations{

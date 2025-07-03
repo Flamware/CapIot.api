@@ -31,6 +31,7 @@ type DeviceService interface {
 	GetLocationByDeviceID(id string) (*models.Location, error)
 	GetDevicesSensorsLocations(ctx context.Context, page int, limit int, term string) (map[string]interface{}, error)
 	DeleteDevice(ctx context.Context, id string) error
+	UpdateCaptorRange(id string, minThreshold float64, maxThreshold float64) error
 }
 
 // DefaultDeviceService implements the DeviceService interface
@@ -326,4 +327,23 @@ func (s *DefaultDeviceService) GetDevicesSensorsLocations(ctx context.Context, p
 	}
 
 	return response, nil
+}
+
+// UpdateCaptorRange updates the operational range of a captor
+func (s *DefaultDeviceService) UpdateCaptorRange(id string, minThreshold float64, maxThreshold float64) error {
+	captor, err := s.deviceDAO.GetCaptorByID(id)
+	if err != nil {
+		return fmt.Errorf("error retrieving captor with ID '%s': %w", id, err)
+	}
+	if captor == nil {
+		return fmt.Errorf("captor with ID '%s' not found", id)
+	}
+	captor.MinThreshold = minThreshold
+	captor.MaxThreshold = maxThreshold
+	err = s.deviceDAO.UpdateCaptorRange(captor)
+	if err != nil {
+		return fmt.Errorf("error updating captor range for ID '%s': %w", id, err)
+	}
+	log.Printf("Captor range updated successfully for ID '%s'", id)
+	return nil
 }

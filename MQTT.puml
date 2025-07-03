@@ -1,0 +1,70 @@
+@startuml
+' MQTT Broker Deployment: Centered View on Broker, Service, and Secret
+left to right direction
+
+skinparam componentStyle uml2
+skinparam backgroundColor #EEEBD
+
+cloud "Kubernetes Cluster: capiot-cluster" {
+
+    node "Namespace: capiot" {
+
+        node "Configuration & Secrets" {
+            component "MQTT Secret Creation Process" as Secret_Creator_MQTT
+            artifact "Kubernetes Secret: mqtt-credentials" as MQTT_Secret
+        }
+
+        node "MQTT Exposure" {
+            component "MQTT Load Balancer" as MQTT_LB
+            component "MQTT Broker Service (LoadBalancer)" as MQTT_Service
+        }
+
+        node "Broker Deployment" {
+            component "mosquitto Deployment (1/1)" as MQTT_Broker
+        }
+    }
+}
+
+' Relationships
+Secret_Creator_MQTT --> MQTT_Secret : "Generates / Manages"
+MQTT_LB --> MQTT_Service : "External MQTT Traffic"
+MQTT_Service --> MQTT_Broker : "Exposes Pods"
+
+' Explicit connection for secret usage by the broker
+MQTT_Broker ..> MQTT_Secret : "Consumes Credentials / TLS (Mounted)"
+
+' Notes
+note top of MQTT_Secret
+  Contains:
+  - username
+  - password
+  - tls.crt
+  - tls.key
+  (or other auth/TLS data)
+  Used by Mosquitto for
+  authentication/encryption.
+end note
+
+note right of MQTT_Service
+  Type: LoadBalancer
+  Exposes MQTT Broker
+  externally.
+  Handles client connections
+  (e.g., port 1883, 8883).
+end note
+
+note bottom of MQTT_Broker
+  MQTT Pub/Sub Broker
+  Device Decoupling
+  (User/Pass + SSL/TLS)
+end note
+
+note bottom of Secret_Creator_MQTT
+  Could be managed by:
+  - Helm Chart
+  - Kubernetes Operator
+  - CI/CD Pipeline
+  - Manual kubectl create
+end note
+
+@enduml

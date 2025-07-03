@@ -27,6 +27,8 @@ type DeviceDAO interface {
 	UnassignDeviceFromLocation(id string) error
 	FindAllWithSensorsAndLocations(ctx context.Context, limit int, offset int, search string) ([]*models.DeviceWithSensorsAndLocation, error)
 	CountAll(ctx context.Context, search string) (int, error)
+	UpdateCaptor(captor *models.Captor) error
+	UpdateCaptorRange(captor *models.Captor) error
 }
 
 // PostgresDeviceDAO implements the DeviceDAO interface using PostgreSQL.
@@ -384,4 +386,20 @@ func (d *PostgresDeviceDAO) CountAll(ctx context.Context, search string) (int, e
 		return 0, fmt.Errorf("failed to count devices: %w", err)
 	}
 	return count, nil
+}
+
+func (d *PostgresDeviceDAO) UpdateCaptor(captor *models.Captor) error {
+	_, err := d.db.Exec("UPDATE captors SET captor_type = $1 WHERE captor_id = $2", captor.CaptorType, captor.CaptorID)
+	if err != nil {
+		return fmt.Errorf("failed to update captor: %w", err)
+	}
+	return nil
+}
+
+func (d *PostgresDeviceDAO) UpdateCaptorRange(captor *models.Captor) error {
+	_, err := d.db.Exec("UPDATE captors SET min_threshold = $1, max_threshold = $2 WHERE captor_id = $3", captor.MinThreshold, captor.MaxThreshold, captor.CaptorID)
+	if err != nil {
+		return fmt.Errorf("failed to update captor range: %w", err)
+	}
+	return nil
 }

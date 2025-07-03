@@ -9,8 +9,11 @@ import (
 )
 
 // SetupAdminRoutes sets up the admin-protected route
-func SetupAdminRoutes(r *mux.Router, adminHandler *handlers.AdminHandler, userHandler *handlers.UserHandler,
+func SetupAdminRoutes(r *mux.Router,
+	adminHandler *handlers.AdminHandler,
+	userHandler *handlers.UserHandler,
 	locationHandler *handlers.LocationHandler,
+	deviceHandler *handlers.DeviceHandler,
 	mqttHandler *handlers.MqttHandler,
 	authService service.AuthService) {
 	adminRouter := r.PathPrefix("/api/admin").Subrouter()
@@ -59,4 +62,8 @@ func SetupAdminRoutes(r *mux.Router, adminHandler *handlers.AdminHandler, userHa
 
 	// Define the handler for starting monitoring for a device
 	adminRouter.HandleFunc("/devices/{deviceID}", mqttHandler.SetStatus).Methods(http.MethodPatch)
+
+	// Define the handler for updating range of a device's captor
+	adminRouter.HandleFunc("/devices/{deviceID}/captors/{captorID}/range", deviceHandler.UpdateCaptorRange).Methods(http.MethodPut)
+
 }

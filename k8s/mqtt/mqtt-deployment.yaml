@@ -2,26 +2,28 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: mosquitto-deployment
+  namespace: capiot
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: mqtt # changed to match the service selector
+      app: mqtt
   template:
     metadata:
       labels:
-        app: mqtt # changed to match the service selector
+        app: mqtt
     spec:
       containers:
         - name: mosquitto
-          image: eclipse-mosquitto:2.0.18 # example of a specific version
+          image: eclipse-mosquitto:2.0.18
           ports:
             - containerPort: 1883
+            - containerPort: 9001 # Keep this if your service exposes it
           volumeMounts:
-            - name: config-volume
+            - name: mosquitto-config-volume
               mountPath: /mosquitto/config/mosquitto.conf
-              subPath: mosquitto.conf
+              subPath: mosquitto.conf # Mount only the specific file
       volumes:
-        - name: config-volume
+        - name: mosquitto-config-volume
           configMap:
-            name: mosquitto-configmap
+            name: mosquitto-config # Reference the ConfigMap created above

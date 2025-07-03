@@ -1,8 +1,9 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: mosquitto-configmap
+  name: mosquitto-config
+  namespace: capiot
 data:
   mosquitto.conf: |
-    listener 1883
+    listener 1883 0.0.0.0
     allow_anonymous true

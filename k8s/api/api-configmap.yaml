@@ -2,7 +2,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: api-configmap
-  namespace: capiot-app
+  namespace: capiot
 data:
   DB_HOST: "postgres-service"
-  MQTT_BROKER: "tcp://mqtt.mqtt-namespace.svc.cluster.local:1883"
+  MQTT_BROKER: "tcp://mosquitto-service.capiot.svc.cluster.local:1883"

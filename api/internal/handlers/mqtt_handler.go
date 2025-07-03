@@ -35,8 +35,10 @@ type AvailabilityPayload struct {
 }
 
 type CaptorInfo struct {
-	ID   string `json:"captor_id"`
-	Type string `json:"captor_type"`
+	ID           string  `json:"captor_id"`
+	Type         string  `json:"captor_type"`
+	MinThreshold float64 `json:"min_threshold,omitempty"`
+	MaxThreshold float64 `json:"max_threshold,omitempty"`
 }
 
 func (h *MqttHandler) HandleDeviceAvailability(client mqtt.Client, msg mqtt.Message) {
@@ -77,33 +79,32 @@ func (h *MqttHandler) HandleDeviceAvailability(client mqtt.Client, msg mqtt.Mess
 		device = newDevice
 	}
 
-	// Update the device's last seen and status
 	err = h.deviceService.UpdateDeviceLastSeenAndStatus(deviceID)
 	if err != nil {
 		log.Printf("Error updating device '%s': %v\n", deviceID, err)
 		return
 	}
 
-	// --- Step 2: Process and Create Captors and Link ---
+	// --- Step 2: Process and Create/Update Captors ---
 	for _, captor := range payload.Captors {
+		var createdCaptor *models.Captor
+
 		existingCaptor, err := h.deviceService.GetCaptorByID(captor.ID)
 		if err != nil {
 			log.Printf("Error retrieving captor with ID '%s': %v\n", captor.ID, err)
-			// Consider this a configuration failure
 			continue
 		}
 
-		var createdCaptor *models.Captor
 		if existingCaptor == nil {
 			newCaptor := &models.Captor{
-				CaptorID:   captor.ID,
-				CaptorType: captor.Type,
+				CaptorID:     captor.ID,
+				CaptorType:   captor.Type,
+				MinThreshold: captor.MinThreshold,
+				MaxThreshold: captor.MaxThreshold,
 			}
-
 			createdCaptor, err = h.deviceService.CreateCaptor(newCaptor)
 			if err != nil {
 				log.Printf("Error creating captor with ID '%s': %v\n", captor.ID, err)
-				// Consider this a configuration failure
 				continue
 			}
 			log.Printf("Captor '%s' created with ID '%s'.\n", createdCaptor.CaptorType, createdCaptor.CaptorID)
@@ -112,15 +113,20 @@ func (h *MqttHandler) HandleDeviceAvailability(client mqtt.Client, msg mqtt.Mess
 			createdCaptor = existingCaptor
 		}
 
-		if createdCaptor != nil {
-			err = h.deviceService.LinkCaptorToDevice(deviceID, createdCaptor.CaptorID)
-			if err != nil {
-				log.Printf("Error linking captor '%s' to device '%s': %v\n", createdCaptor.CaptorID, deviceID, err)
-				// Consider this a configuration failure
-				continue
-			}
-			log.Printf("Captor '%s' linked to device '%s'.\n", createdCaptor.CaptorID, deviceID)
+		// Always update thresholds regardless of existence
+		err = h.deviceService.UpdateCaptorRange(createdCaptor.CaptorID, captor.MinThreshold, captor.MaxThreshold)
+		if err != nil {
+			log.Printf("Error updating thresholds for captor '%s': %v\n", createdCaptor.CaptorID, err)
+			continue
 		}
+		log.Printf("Captor '%s' thresholds set to Min: %f, Max: %f.\n", createdCaptor.CaptorID, captor.MinThreshold, captor.MaxThreshold)
+
+		err = h.deviceService.LinkCaptorToDevice(deviceID, createdCaptor.CaptorID)
+		if err != nil {
+			log.Printf("Error linking captor '%s' to device '%s': %v\n", createdCaptor.CaptorID, deviceID, err)
+			continue
+		}
+		log.Printf("Captor '%s' linked to device '%s'.\n", createdCaptor.CaptorID, deviceID)
 	}
 }
 

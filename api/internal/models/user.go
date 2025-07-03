@@ -9,7 +9,7 @@ type User struct {
 	ID        int       `json:"id"`        // ID from the database
 	Auth0ID   string    `json:"auth0_id"`  // Auth0 ID of the user
 	Email     string    `json:"email"`     // Email of the user
-	Name      string    `json:"name"`      // Email of the user
+	Name      *string   `json:"name"`      // Email of the user
 	Role      []string  `json:"roles"`     // List of roles assigned to the user
 	CreatedAt time.Time `json:"createdAt"` // Timestamp for when the user was created
 }

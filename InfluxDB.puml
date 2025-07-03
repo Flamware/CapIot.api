@@ -1,0 +1,67 @@
+@startuml
+' InfluxDB Deployment: Centered View on Database, Service, and Token Secret
+left to right direction
+
+skinparam componentStyle uml2
+skinparam backgroundColor #EEEBD
+
+cloud "Kubernetes Cluster: capiot-cluster" {
+
+    node "Namespace: capiot" {
+
+        node "Configuration & Secrets" {
+            component "InfluxDB Token Generation (kubectl exec)" as Token_Generator
+            artifact "Kubernetes Secret: influxdb-api-token" as InfluxDB_Token_Secret
+        }
+
+        node "InfluxDB Internal Exposure" {
+            component "InfluxDB Service (ClusterIP)" as InfluxDB_Service
+        }
+
+        node "InfluxDB Database Deployment" {
+            database "influxdb-deployment StatefulSet (1/1)" as InfluxDB_Deployment
+        }
+    }
+}
+
+' Relationships
+Token_Generator --> InfluxDB_Deployment : "Exec into Pod (Generate Token)"
+InfluxDB_Token_Secret <-- Token_Generator : "Stores Generated Token"
+
+InfluxDB_Service --> InfluxDB_Deployment : "Exposes Pods Internally"
+
+' Notes
+note top of InfluxDB_Token_Secret
+  Contains:
+  - api-token: <Generated Token>
+  Used by applications
+  (e.g., api-influxdb-deployment)
+  to access InfluxDB API.
+end note
+
+note right of InfluxDB_Service
+  Type: ClusterIP
+  Internal Service for
+  InfluxDB database access
+  within the cluster.
+  Accessed by other services
+  like 'api-influxdb-deployment'.
+end note
+
+note bottom of InfluxDB_Deployment
+  Time-Series Database
+  Data Persistence:
+  Uses Persistent Volumes
+end note
+
+note bottom of Token_Generator
+  Manual / CI/CD Step:
+  Uses `kubectl exec <pod-name> -- influx auth create ...`
+  to generate an API token for a
+  specific user/bucket access.
+  This token is then retrieved
+  and stored into the
+  'influxdb-api-token' Secret.
+end note
+
+@enduml

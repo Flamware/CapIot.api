@@ -2,12 +2,15 @@ apiVersion: v1
 kind: Service
 metadata:
   name: api-service
-  namespace: capiot-app
+  namespace: capiot
+  labels:
+    app: api-service    # Optional: label the service itself
 spec:
   selector:
-    app: api
+    app: api            # **Crucial:** Matches the 'app' label of your API Pods
   ports:
     - protocol: TCP
-      port: 8080 # Service port
-      targetPort: 8080 # Pod port
-  type: ClusterIP
+      port: 80        # The port on which this Service will be accessible externally
+      targetPort: 8080  # The port on which your API container is listening inside the Pod
+      name: http-api    # Optional: name the port for clarity
+  type: LoadBalancer    # **Changed:** Civo will provision an external IP for this service

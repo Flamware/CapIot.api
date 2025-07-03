@@ -1,85 +1,55 @@
 @startuml
-' Kubernetes Scalable Architecture
+' Frontend Deployment with NodePort Service and LoadBalancer Ingress
 left to right direction
 
 skinparam componentStyle uml2
 skinparam backgroundColor #EEEBD
 
-cloud "Kubernetes Cluster" {
-    node "Ingress Controller" {
-        component "Ingress" as Ingress
-    }
+cloud "Kubernetes Cluster: capiot-cluster" {
 
-    node "Namespace: IoT" {
-        node "Frontend" {
-            component "Frontend Pod" as FE
+    node "Namespace: capiot" {
+
+        node "API/UI Load Balancer" {
+            component "Ingress Controller" {
+                component "Ingress (UI/API/InfluxDB)" as Ingress_API_UI
+            }
         }
 
-        node "Backend Services" {
-            component "API Backend Deployment" as API_Backend
-            component "API InfluxDB Deployment" as API_InfluxDB
-            component "MQTT Broker Deployment" as MQTT_Broker
+        node "Frontend Exposure" {
+            component "Frontend NodePort Service" as FE_Service
         }
 
-        node "Databases" {
-            database "PostgreSQL StatefulSet" as PostgreSQL
-            database "InfluxDB StatefulSet" as InfluxDB
+        node "Frontend Deployment" {
+            component "frontend-deployment Pod (2/2)" as FE_Pod
         }
     }
-}
-
-cloud "Auth0" as Auth0
-node "STM32 Fleet" {
-    component "STM32 Device" as STM32
 }
 
 ' Relationships
-Ingress --> FE
-FE --> API_Backend : "Token get/send"
-FE --> API_InfluxDB : "Token send"
-
-STM32 -> MQTT_Broker : "Publish (User/Pass + SSL?)"
-STM32 -> API_InfluxDB
-
-API_Backend --> Auth0 : "Token Verif."
-API_Backend --> PostgreSQL : "Data Storage"
-API_InfluxDB --> InfluxDB : "Time-Series"
-API_Backend --> MQTT_Broker : "Pub/Sub"
+Ingress_API_UI --> FE_Service : "External Traffic (e.g., HTTP/S)"
+FE_Service --> FE_Pod : "Redirects Traffic (NodePort)"
 
 ' Notes
-note right of API_Backend
-  1. Auth0 Integration
-  2. Token Mgmt/Verif.
-  3. Device Config.
-  4. Data Persist.
+note right of FE_Service
+  Type: NodePort
+  Exposes Frontend Pods
+  on each Node's IP at a
+  static port.
 end note
 
-note right of API_InfluxDB
-  1. Token Verif.
-  2. TPM2.0 Signature Decode
+note right of Ingress_API_UI
+  Routes external traffic
+  to the Frontend Service
+  based on Ingress rules.
 end note
 
-note right of STM32
-  1. Auth0 JWT Request
-  2. TPM2.0 Signed Payload
+note bottom of FE_Pod
+  Docker Image:
+  <Public Docker Image Name>
+
+  Environment Variables:
+  - API_URL: <Your API Backend URL>
+  - INFLUXDB_API_URL: <Your InfluxDB API URL>
 end note
 
-note left of API_Backend
-  1. Device Discovery
-  2. Config Range Update
-end note
-
-note right of MQTT_Broker
-  1. Pub/Sub Broker
-  2. Device Decoupling
-  3. User/Pass (+ SSL?)
-end note
-
-note bottom of PostgreSQL
-  User/Site Data
-end note
-
-note bottom of InfluxDB
-  Time-Series Data
-end note
 @enduml

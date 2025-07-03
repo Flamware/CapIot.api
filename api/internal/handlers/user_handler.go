@@ -71,7 +71,7 @@ func (h *UserHandler) UpdateCurrentUser(w http.ResponseWriter, r *http.Request) 
 	userID := int(userIDFloat)
 
 	var requestBody struct {
-		Name string `json:"name"`
+		Name *string `json:"name"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)

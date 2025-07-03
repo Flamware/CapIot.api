@@ -5,6 +5,7 @@ import (
 	"CapIot-api/internal/models"
 	"CapIot-api/internal/service"
 	"CapIot-api/internal/utils"
+	"encoding/json"
 	"github.com/gorilla/mux"
 	"log"
 	"net/http"
@@ -146,4 +147,46 @@ func (h *DeviceHandler) UnassignDeviceFromLocation(writer http.ResponseWriter, r
 
 	writer.WriteHeader(http.StatusOK)
 	writer.Write([]byte("Device unassigned from location successfully")) // Could also use RespondWithJSON for consistency
+}
+
+func (h *DeviceHandler) UpdateCaptorRange(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPut {
+		utils.RespondWithError(writer, http.StatusMethodNotAllowed, "Method not allowed", nil)
+		return
+	}
+
+	vars := mux.Vars(request)
+	deviceID, ok := vars["deviceID"]
+	if !ok {
+		utils.RespondWithError(writer, http.StatusBadRequest, "Missing device ID in path", nil)
+		return
+	}
+
+	captorID, ok := vars["captorID"]
+	if !ok {
+		utils.RespondWithError(writer, http.StatusBadRequest, "Missing captor ID in path", nil)
+		return
+	}
+
+	// Manually read and decode the request body
+	var captorRangeUpdate models.CaptorRangeUpdate
+	decoder := json.NewDecoder(request.Body)
+	decoder.DisallowUnknownFields() // optional but good for catching unknown fields
+	err := decoder.Decode(&captorRangeUpdate)
+	if err != nil {
+		utils.RespondWithError(writer, http.StatusBadRequest, "Invalid request body", map[string]string{"error": err.Error()})
+		return
+	}
+
+	err = h.deviceService.UpdateCaptorRange(captorID, captorRangeUpdate.MinThreshold, captorRangeUpdate.MaxThreshold)
+	if err != nil {
+		utils.RespondWithError(writer, http.StatusInternalServerError, "Failed to update captor range", map[string]string{"error": err.Error()})
+		return
+	}
+
+	utils.RespondWithJSON(writer, http.StatusOK, map[string]string{
+		"message":   "Captor range updated successfully",
+		"device_id": deviceID,
+		"captor_id": captorID,
+	})
 }
