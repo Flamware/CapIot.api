@@ -1,4 +1,4 @@
--- db/migration/V1__create_initial_schema_and_captors.sql
+-- db/migration/V1__create_initial_schema_and_sensors.sql
 
 -- Create the users table
 CREATE TABLE IF NOT EXISTS public.users (
@@ -52,19 +52,19 @@ CREATE TABLE IF NOT EXISTS public.device_location (
 -- Create the unique index with WHERE clause AFTER the table is created
 CREATE UNIQUE INDEX IF NOT EXISTS unique_current_device_location ON public.device_location (device_id) WHERE is_current = true;
 
--- Create the captors table
-CREATE TABLE IF NOT EXISTS public.captors (
-                                              captor_id VARCHAR(255) PRIMARY KEY,
-    captor_type VARCHAR(255) NOT NULL
+-- Create the sensors table
+CREATE TABLE IF NOT EXISTS public.sensors (
+                                              sensor_id VARCHAR(255) PRIMARY KEY,
+    sensor_type VARCHAR(255) NOT NULL
     );
 
--- Create the device_captors table
-CREATE TABLE IF NOT EXISTS public.device_captors (
+-- Create the device_sensors table
+CREATE TABLE IF NOT EXISTS public.device_sensors (
                                                      device_id TEXT NOT NULL,
-                                                     captor_id VARCHAR(255) NOT NULL,
-    PRIMARY KEY (device_id, captor_id),
+                                                     sensor_id VARCHAR(255) NOT NULL,
+    PRIMARY KEY (device_id, sensor_id),
     FOREIGN KEY (device_id) REFERENCES public.devices(device_id) ON DELETE CASCADE,
-    FOREIGN KEY (captor_id) REFERENCES public.captors(captor_id) ON DELETE CASCADE
+    FOREIGN KEY (sensor_id) REFERENCES public.sensors(sensor_id) ON DELETE CASCADE
     );
 
 -- Grant privileges to the 'admin' role on all tables in the public schema

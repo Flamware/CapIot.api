@@ -113,47 +113,47 @@ func (r *PostgresLocationRepository) GetLocationByID(id string) (models.Location
 	return location, nil
 }
 
-// GetCaptorsByLocationID retrieves captors associated with a location ID.
-func (r *PostgresLocationRepository) GetCaptorsByLocationID(locationID string) ([]models.Captor, error) {
+// GetsensorsByLocationID retrieves sensors associated with a location ID.
+func (r *PostgresLocationRepository) GetsensorsByLocationID(locationID string) ([]models.Sensor, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	query := `SELECT
-       c.captor_id,
-       c.captor_type
-    FROM captors c
-    JOIN device_captors dc ON c.captor_id = dc.captor_id
+       c.sensor_id,
+       c.sensor_type
+    FROM sensors c
+    JOIN device_sensors dc ON c.sensor_id = dc.sensor_id
     JOIN device_location dl ON dc.device_id = dl.device_id
     WHERE dl.location_id = $1 `
 
 	rows, err := r.db.QueryContext(ctx, query, locationID)
 	if err != nil {
-		log.Printf("Error getting captors by location ID: %v\n", err)
-		return []models.Captor{}, err
+		log.Printf("Error getting sensors by location ID: %v\n", err)
+		return []models.Sensor{}, err
 	}
 	defer rows.Close()
 
-	captors := []models.Captor{} // Initialize as an empty slice
+	sensors := []models.Sensor{} // Initialize as an empty slice
 
 	for rows.Next() {
-		var captor models.Captor
+		var sensor models.Sensor
 
 		if err := rows.Scan(
-			&captor.CaptorID,
-			&captor.CaptorType,
+			&sensor.SensorID,
+			&sensor.SensorType,
 		); err != nil {
-			log.Printf("Error scanning captor row: %v\n", err)
-			return []models.Captor{}, err
+			log.Printf("Error scanning sensor row: %v\n", err)
+			return []models.Sensor{}, err
 		}
-		captors = append(captors, captor)
+		sensors = append(sensors, sensor)
 	}
 
 	if err := rows.Err(); err != nil {
-		log.Printf("Error iterating captor rows: %v\n", err)
-		return []models.Captor{}, err
+		log.Printf("Error iterating sensor rows: %v\n", err)
+		return []models.Sensor{}, err
 	}
 
-	return captors, nil
+	return sensors, nil
 }
 
 // GetDevicesByLocationID retrieves devices associated with a location ID.
@@ -255,7 +255,7 @@ func (r *PostgresLocationRepository) GetLocationsDevicesUsers(ctx context.Contex
 					Name:        locationName,        // Assign pointer to string
 					Description: locationDescription, // Assign pointer to string
 				},
-				Devices: []*models.DeviceWithCaptors{}, // Initialize with the correct type
+				Devices: []*models.DeviceWithsensors{}, // Initialize with the correct type
 				Users:   []*models.User{},
 			}
 		}
@@ -263,13 +263,13 @@ func (r *PostgresLocationRepository) GetLocationsDevicesUsers(ctx context.Contex
 		location := locationsMap[*locationID]
 
 		if deviceID != nil {
-			location.Devices = append(location.Devices, &models.DeviceWithCaptors{ // Use the correct struct
+			location.Devices = append(location.Devices, &models.DeviceWithsensors{ // Use the correct struct
 				Device: &models.Device{
 					DeviceID: *deviceID,       // Assign pointer to int
 					Status:   *deviceStatus,   // Assign pointer to string
 					LastSeen: *deviceLastSeen, // Assign pointer to time.Time
 				},
-				// Captors field will be nil as it's not fetched in this query
+				// sensors field will be nil as it's not fetched in this query
 			})
 		}
 

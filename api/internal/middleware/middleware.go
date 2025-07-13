@@ -27,7 +27,6 @@ func JWTAuthMiddleware(next http.Handler) http.Handler {
 			http.Error(w, "Authorization header missing", http.StatusUnauthorized)
 			return
 		}
-		log.Printf("JWTAuthMiddleware: Authorization header found: %s", authHeader)
 
 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 		if tokenString == authHeader {

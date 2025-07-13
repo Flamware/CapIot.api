@@ -13,22 +13,23 @@ type DeviceDAO interface {
 	CreateDevice(device *models.Device) error
 	GetDeviceByDeviceID(deviceID string) (*models.Device, error)
 	UpdateDeviceLastSeenAndStatus(deviceID string) error
-	CreateCaptor(captor *models.Captor) (*models.Captor, error)
-	GetCaptorByID(id string) (*models.Captor, error)
+	Createsensor(sensor *models.Sensor) (*models.Sensor, error)
+	GetsensorByID(id string) (*models.Sensor, error)
 	GetAllDevices() ([]*models.Device, error) // Ensure this
 	SetDeviceToLocation(ctx context.Context, id string, id2 int) error
-	InsertDeviceCaptor(captor *models.DeviceCaptor) error
+	InsertDevicesensor(sensor *models.Devicesensor) error
 	UpdateDeviceOperationalStatus(id string, status models.OperationalStatus) error
 	GetDeviceByID(id string) (*models.Device, error)
-	GetCaptorsByDeviceID(id string) ([]*models.Captor, error)
+	GetsensorsByDeviceID(id string) ([]*models.Sensor, error)
 	GetUnassignedDevices() ([]*models.Device, error)
 	DeleteDevice(id string) error
 	GetLocationByDeviceID(id string) (*models.Location, error)
 	UnassignDeviceFromLocation(id string) error
 	FindAllWithSensorsAndLocations(ctx context.Context, limit int, offset int, search string) ([]*models.DeviceWithSensorsAndLocation, error)
 	CountAll(ctx context.Context, search string) (int, error)
-	UpdateCaptor(captor *models.Captor) error
-	UpdateCaptorRange(captor *models.Captor) error
+	Updatesensor(sensor *models.Sensor) error
+	UpdatesensorRange(sensor *models.Sensor) error
+	HandleDeviceAlert(SensorID string, message string) error
 }
 
 // PostgresDeviceDAO implements the DeviceDAO interface using PostgreSQL.
@@ -106,50 +107,50 @@ func (d *PostgresDeviceDAO) SetDeviceToLocation(ctx context.Context, deviceID st
 	}
 	return nil // Return nil to indicate success
 }
-func (d *PostgresDeviceDAO) InsertCaptor(captor *models.Captor) (*models.Captor, error) {
-	err := d.db.QueryRow("INSERT INTO captors (captor_type, captor_type) VALUES ($1, $2) RETURNING captor_id", captor.CaptorType).Scan(&captor.CaptorID)
+func (d *PostgresDeviceDAO) Insertsensor(sensor *models.Sensor) (*models.Sensor, error) {
+	err := d.db.QueryRow("INSERT INTO sensors (sensor_type, sensor_type) VALUES ($1, $2) RETURNING sensor_id", sensor.SensorType).Scan(&sensor.SensorID)
 	if err != nil {
 		return nil, err
 	}
-	return captor, nil
+	return sensor, nil
 }
 
-// Implementations for DeviceCaptor operations
-func (d *PostgresDeviceDAO) InsertDeviceCaptor(dc *models.DeviceCaptor) error {
-	_, err := d.db.Exec("INSERT INTO public.device_captors (device_id, captor_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", dc.DeviceID, dc.CaptorID)
+// Implementations for Devicesensor operations
+func (d *PostgresDeviceDAO) InsertDevicesensor(dc *models.Devicesensor) error {
+	_, err := d.db.Exec("INSERT INTO public.device_sensors (device_id, sensor_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", dc.DeviceID, dc.SensorID)
 	return err
 }
 
-// GetCaptorByID retrieves a captor record by its ID (string)
-func (d *PostgresDeviceDAO) GetCaptorByID(id string) (*models.Captor, error) {
+// GetsensorByID retrieves a sensor record by its ID (string)
+func (d *PostgresDeviceDAO) GetsensorByID(id string) (*models.Sensor, error) {
 	stmt := `
-       SELECT captor_id, captor_type
-       FROM captors
-       WHERE captor_id = $1
+       SELECT sensor_id, sensor_type, min_threshold, max_threshold  -- <--- Selecting 4 columns
+       FROM sensors
+       WHERE sensor_id = $1
     `
 	row := d.db.QueryRow(stmt, id)
-	var captor models.Captor
-	err := row.Scan(&captor.CaptorID, &captor.CaptorType)
+	var sensor models.Sensor
+	err := row.Scan(&sensor.SensorID, &sensor.SensorType, &sensor.MinThreshold, &sensor.MaxThreshold)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
 		return nil, err
 	}
-	return &captor, nil
+	return &sensor, nil
 }
 
-func (d *PostgresDeviceDAO) CreateCaptor(captor *models.Captor) (*models.Captor, error) {
+func (d *PostgresDeviceDAO) Createsensor(sensor *models.Sensor) (*models.Sensor, error) {
 	stmt := `
-		INSERT INTO captors (captor_id, captor_type)
+		INSERT INTO sensors (sensor_id, sensor_type)
 		VALUES ($1, $2)
-		RETURNING captor_id
+		RETURNING sensor_id
 	`
-	err := d.db.QueryRow(stmt, captor.CaptorID, captor.CaptorType).Scan(&captor.CaptorID)
+	err := d.db.QueryRow(stmt, sensor.SensorID, sensor.SensorType).Scan(&sensor.SensorID)
 	if err != nil {
 		return nil, err
 	}
-	return captor, nil
+	return sensor, nil
 }
 func (d *PostgresDeviceDAO) CreateDevice(device *models.Device) error {
 	_, err := d.db.Exec(
@@ -180,32 +181,32 @@ func (d *PostgresDeviceDAO) GetDeviceByID(id string) (*models.Device, error) {
 	return &device, nil
 }
 
-func (d *PostgresDeviceDAO) GetCaptorsByDeviceID(id string) ([]*models.Captor, error) {
+func (d *PostgresDeviceDAO) GetsensorsByDeviceID(id string) ([]*models.Sensor, error) {
 	rows, err := d.db.Query(`
-        SELECT c.captor_id, c.captor_type
-        FROM device_captors dc
-        JOIN captors c ON dc.captor_id = c.captor_id
+        SELECT c.sensor_id, c.sensor_type, c.min_threshold, c.max_threshold
+        FROM device_sensors dc
+        JOIN sensors c ON dc.sensor_id = c.sensor_id
         WHERE dc.device_id = $1
     `, id)
 	if err != nil {
-		return []*models.Captor{}, err
+		return []*models.Sensor{}, err
 	}
 	defer rows.Close()
 
-	var captors []*models.Captor
+	var sensors []*models.Sensor
 	for rows.Next() {
-		var captor models.Captor
-		if err := rows.Scan(&captor.CaptorID, &captor.CaptorType); err != nil {
-			return []*models.Captor{}, err
+		var sensor models.Sensor
+		if err := rows.Scan(&sensor.SensorID, &sensor.SensorType, &sensor.MinThreshold, &sensor.MaxThreshold); err != nil {
+			return []*models.Sensor{}, err
 		}
-		captors = append(captors, &captor)
+		sensors = append(sensors, &sensor)
 	}
 
 	if err := rows.Err(); err != nil {
-		return []*models.Captor{}, err
+		return []*models.Sensor{}, err
 	}
 
-	return captors, nil
+	return sensors, nil
 }
 
 func (d *PostgresDeviceDAO) GetUnassignedDevices() ([]*models.Device, error) {
@@ -285,9 +286,9 @@ func (d *PostgresDeviceDAO) FindAllWithSensorsAndLocations(ctx context.Context, 
              LOWER(d.device_id) LIKE LOWER('%' || $` + fmt.Sprintf("%d", argCount) + ` || '%') OR
              EXISTS (
                 SELECT 1
-                FROM device_captors dc
-                JOIN captors c ON dc.captor_id = c.captor_id
-                WHERE dc.device_id = d.device_id AND LOWER(c.captor_type) LIKE LOWER('%' || $` + fmt.Sprintf("%d", argCount) + ` || '%')
+                FROM device_sensors dc
+                JOIN sensors c ON dc.sensor_id = c.sensor_id
+                WHERE dc.device_id = d.device_id AND LOWER(c.sensor_type) LIKE LOWER('%' || $` + fmt.Sprintf("%d", argCount) + ` || '%')
              ) OR
              LOWER(l.location_name) LIKE LOWER('%' || $` + fmt.Sprintf("%d", argCount) + ` || '%')
        `)
@@ -319,14 +320,14 @@ func (d *PostgresDeviceDAO) FindAllWithSensorsAndLocations(ctx context.Context, 
 			return nil, fmt.Errorf("scan failed: %w", err)
 		}
 
-		deviceWithCaptors := &models.DeviceWithCaptors{
+		deviceWithsensors := &models.DeviceWithsensors{
 			Device: &device,
 		}
 
 		if existingDevice, ok := deviceMap[device.DeviceID]; ok {
 			existingDevice.Location = &location
 		} else {
-			deviceWithInfo.DeviceWithCaptors = deviceWithCaptors // Assign DeviceWithCaptors
+			deviceWithInfo.DeviceWithsensors = deviceWithsensors // Assign DeviceWithsensors
 			deviceWithInfo.Location = &location
 			ptr := &deviceWithInfo
 			deviceMap[device.DeviceID] = ptr
@@ -338,14 +339,14 @@ func (d *PostgresDeviceDAO) FindAllWithSensorsAndLocations(ctx context.Context, 
 		return nil, fmt.Errorf("error during row iteration: %w", err)
 	}
 
-	// Fetch captors for each device
+	// Fetch sensors for each device
 	for _, deviceInfo := range devicesWithInfo {
-		if deviceInfo.DeviceWithCaptors != nil && deviceInfo.DeviceWithCaptors.Device != nil {
-			captors, err := d.GetCaptorsByDeviceID(deviceInfo.DeviceWithCaptors.Device.DeviceID)
+		if deviceInfo.DeviceWithsensors != nil && deviceInfo.DeviceWithsensors.Device != nil {
+			sensors, err := d.GetsensorsByDeviceID(deviceInfo.DeviceWithsensors.Device.DeviceID)
 			if err != nil {
-				return nil, fmt.Errorf("failed to get captors for device %s: %w", deviceInfo.DeviceWithCaptors.Device.DeviceID, err)
+				return nil, fmt.Errorf("failed to get sensors for device %s: %w", deviceInfo.DeviceWithsensors.Device.DeviceID, err)
 			}
-			deviceInfo.DeviceWithCaptors.Captors = captors // Assign captors to DeviceWithCaptors
+			deviceInfo.DeviceWithsensors.Sensors = sensors // Assign sensors to DeviceWithsensors
 		}
 	}
 
@@ -366,9 +367,9 @@ func (d *PostgresDeviceDAO) CountAll(ctx context.Context, search string) (int, e
 				LOWER(d.device_id) LIKE LOWER('%' || $` + fmt.Sprintf("%d", argCount) + ` || '%') OR
 				EXISTS (
 					SELECT 1
-					FROM device_captors dc
-					JOIN captors c ON dc.captor_id = c.captor_id
-					WHERE dc.device_id = d.device_id AND LOWER(c.captor_type) LIKE LOWER('%' || $` + fmt.Sprintf("%d", argCount) + ` || '%')
+					FROM device_sensors dc
+					JOIN sensors c ON dc.sensor_id = c.sensor_id
+					WHERE dc.device_id = d.device_id AND LOWER(c.sensor_type) LIKE LOWER('%' || $` + fmt.Sprintf("%d", argCount) + ` || '%')
 				) OR
 				EXISTS (
 					SELECT 1
@@ -388,18 +389,56 @@ func (d *PostgresDeviceDAO) CountAll(ctx context.Context, search string) (int, e
 	return count, nil
 }
 
-func (d *PostgresDeviceDAO) UpdateCaptor(captor *models.Captor) error {
-	_, err := d.db.Exec("UPDATE captors SET captor_type = $1 WHERE captor_id = $2", captor.CaptorType, captor.CaptorID)
+func (d *PostgresDeviceDAO) Updatesensor(sensor *models.Sensor) error {
+	_, err := d.db.Exec("UPDATE sensors SET sensor_type = $1 WHERE sensor_id = $2", sensor.SensorType, sensor.SensorID)
 	if err != nil {
-		return fmt.Errorf("failed to update captor: %w", err)
+		return fmt.Errorf("failed to update sensor: %w", err)
 	}
 	return nil
 }
 
-func (d *PostgresDeviceDAO) UpdateCaptorRange(captor *models.Captor) error {
-	_, err := d.db.Exec("UPDATE captors SET min_threshold = $1, max_threshold = $2 WHERE captor_id = $3", captor.MinThreshold, captor.MaxThreshold, captor.CaptorID)
+func (d *PostgresDeviceDAO) UpdatesensorRange(sensor *models.Sensor) error {
+	_, err := d.db.Exec("UPDATE sensors SET min_threshold = $1, max_threshold = $2 WHERE sensor_id = $3", sensor.MinThreshold, sensor.MaxThreshold, sensor.SensorID)
 	if err != nil {
-		return fmt.Errorf("failed to update captor range: %w", err)
+		return fmt.Errorf("failed to update sensor range: %w", err)
 	}
 	return nil
+}
+
+func (d *PostgresDeviceDAO) HandleDeviceAlert(sensor_id string, message string) error {
+	stmt := `
+        INSERT INTO public.sensor_log (sensor_id, log_content, log_read)
+        VALUES ($1, $2, FALSE) -- You can explicitly set log_read to FALSE here
+    `
+	// Execute the statement, passing the values as separate arguments to Exec
+	_, err := d.db.Exec(stmt, sensor_id, message)
+	if err != nil {
+		// Wrap the error for more context in the logs
+		return fmt.Errorf("failed to insert alert log for sensor '%s': %w", sensor_id, err)
+	}
+	return nil
+}
+
+// Function to return the log content for a specific sensor
+func (d *PostgresDeviceDAO) GetSensorLog(sensorID string) ([]*models.SensorLog, error) {
+	rows, err := d.db.Query("SELECT log_id, sensor_id, log_content, log_read, created_at FROM sensor_log WHERE sensor_id = $1", sensorID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query sensor logs: %w", err)
+	}
+	defer rows.Close()
+
+	var logs []*models.SensorLog
+	for rows.Next() {
+		var log models.SensorLog
+		if err := rows.Scan(&log.LogID, &log.SensorID, &log.Content, &log.Read, &log.Timestamp); err != nil {
+			return nil, fmt.Errorf("failed to scan sensor log: %w", err)
+		}
+		logs = append(logs, &log)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error during row iteration: %w", err)
+	}
+
+	return logs, nil
 }

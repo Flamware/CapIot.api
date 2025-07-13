@@ -18,7 +18,7 @@ func NewLocation(name, description string) *Location {
 type LocationWithUsersDevices struct {
 	Location
 	Users   []*User              `json:"users,omitempty"`   // List of users associated with the location
-	Devices []*DeviceWithCaptors `json:"devices,omitempty"` // List of devices associated with the location
+	Devices []*DeviceWithsensors `json:"devices,omitempty"` // List of devices associated with the location
 }
 
 // LocationWithUsers represents a location with its associated users
@@ -30,7 +30,7 @@ type LocationWithUsers struct {
 // LocationWithDevices represents a location with its associated devices
 type LocationWithDevices struct {
 	Location
-	Devices []*DeviceWithCaptors `json:"devices,omitempty"` // List of devices associated with the location
+	Devices []*DeviceWithsensors `json:"devices,omitempty"` // List of devices associated with the location
 }
 
 // LocationWithUsersAndDevices represents a location with its associated users and devices

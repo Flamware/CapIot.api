@@ -16,13 +16,6 @@ func SetupMQTTRoutes(client mqtt.Client, mqttHandler *handlers.MqttHandler) {
 	}
 	log.Printf("Subscribed to topic: %s\n", availabilityTopic)
 
-	// Subscribe to the device data topic and use the handler
-	dataTopic := "iot/device/+/data"
-	if token := client.Subscribe(dataTopic, 0, mqttHandler.HandleDeviceData); token.Wait() && token.Error() != nil {
-		log.Fatalf("Error subscribing to topic: %v", token.Error())
-	}
-	log.Printf("Subscribed to topic: %s\n", dataTopic)
-
 	lwtTopic := "devices/lwt/+"
 	if token := client.Subscribe(lwtTopic, 1, mqttHandler.HandleDeviceStatus); token.Wait() && token.Error() != nil {
 		log.Fatalf("Error subscribing to status topic: %v", token.Error())
@@ -33,5 +26,11 @@ func SetupMQTTRoutes(client mqtt.Client, mqttHandler *handlers.MqttHandler) {
 	if token := client.Subscribe("devices/status/+", 1, mqttHandler.HandleDeviceStatus); token.Wait() && token.Error() != nil {
 		log.Fatalf("Error subscribing to status topic: %v", token.Error())
 	}
+
+	alertTopic := "devices/alert/+"
+	if token := client.Subscribe(alertTopic, 1, mqttHandler.HandleDeviceAlert); token.Wait() && token.Error() != nil {
+		log.Fatalf("Error subscribing to alert topic: %v", token.Error())
+	}
+
 	log.Printf("Subscribed to topic: %s\n", statusTopic)
 }

@@ -15,6 +15,6 @@ func SetupDeviceRoute(r *mux.Router, deviceHandler *handlers.DeviceHandler) {
 	r.Handle("/api/devices/{deviceID}", middleware.JWTAuthMiddleware(http.HandlerFunc(deviceHandler.DeleteDevice))).Methods(http.MethodDelete)
 	r.Handle("/api/unassign-device/{deviceID}", middleware.JWTAuthMiddleware(http.HandlerFunc(deviceHandler.UnassignDeviceFromLocation))).Methods(http.MethodPost)
 	r.Handle("/api/devices/{deviceID}", middleware.JWTAuthMiddleware(http.HandlerFunc(deviceHandler.GetDeviceByID))).Methods(http.MethodGet)
-	r.Handle("/api/devices/{deviceID}/captors", middleware.JWTAuthMiddleware(http.HandlerFunc(deviceHandler.GetCaptorsByDeviceID))).Methods(http.MethodGet)
-
+	r.Handle("/api/devices/{deviceID}/sensors", middleware.JWTAuthMiddleware(http.HandlerFunc(deviceHandler.GetsensorsByDeviceID))).Methods(http.MethodGet)
+	r.Handle("/api/devices/{deviceID}/sensors/{sensorID}/logs", middleware.JWTAuthMiddleware(http.HandlerFunc(deviceHandler.GetSensorLogsByDeviceIDAndSensorID))).Methods(http.MethodGet)
 }

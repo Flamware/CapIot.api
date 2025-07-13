@@ -93,7 +93,7 @@ func (h *DeviceHandler) GetDeviceByID(writer http.ResponseWriter, request *http.
 	utils.RespondWithJSON(writer, http.StatusOK, device)
 }
 
-func (h *DeviceHandler) GetCaptorsByDeviceID(writer http.ResponseWriter, request *http.Request) {
+func (h *DeviceHandler) GetsensorsByDeviceID(writer http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodGet {
 		utils.RespondWithError(writer, http.StatusMethodNotAllowed, "Method not allowed", nil)
 		return
@@ -104,12 +104,12 @@ func (h *DeviceHandler) GetCaptorsByDeviceID(writer http.ResponseWriter, request
 		utils.RespondWithError(writer, http.StatusBadRequest, "Missing device ID in path", nil)
 		return
 	}
-	captors, err := h.deviceService.GetCaptorsByDeviceID(deviceID)
+	sensors, err := h.deviceService.GetsensorsByDeviceID(deviceID)
 	if err != nil {
-		utils.RespondWithError(writer, http.StatusInternalServerError, "Error getting captors", map[string]string{"error": err.Error()})
+		utils.RespondWithError(writer, http.StatusInternalServerError, "Error getting sensors", map[string]string{"error": err.Error()})
 		return
 	}
-	utils.RespondWithJSON(writer, http.StatusOK, captors)
+	utils.RespondWithJSON(writer, http.StatusOK, sensors)
 }
 
 func (h *DeviceHandler) GetUnassignedDevices(writer http.ResponseWriter, request *http.Request) {
@@ -149,8 +149,50 @@ func (h *DeviceHandler) UnassignDeviceFromLocation(writer http.ResponseWriter, r
 	writer.Write([]byte("Device unassigned from location successfully")) // Could also use RespondWithJSON for consistency
 }
 
-func (h *DeviceHandler) UpdateCaptorRange(writer http.ResponseWriter, request *http.Request) {
+func (h *DeviceHandler) UpdatesensorRange(writer http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodPut {
+		utils.RespondWithError(writer, http.StatusMethodNotAllowed, "Method not allowed", nil)
+		return
+	}
+
+	vars := mux.Vars(request)
+	DeviceID, ok := vars["deviceID"]
+	if !ok {
+		utils.RespondWithError(writer, http.StatusBadRequest, "Missing device ID in path", nil)
+		return
+	}
+
+	SensorID, ok := vars["SensorID"]
+	if !ok {
+		utils.RespondWithError(writer, http.StatusBadRequest, "Missing sensor ID in path", nil)
+		return
+	}
+
+	// Manually read and decode the request body
+	var sensorRangeUpdate models.SensorRangeUpdate
+	decoder := json.NewDecoder(request.Body)
+	decoder.DisallowUnknownFields() // optional but good for catching unknown fields
+	err := decoder.Decode(&sensorRangeUpdate)
+	if err != nil {
+		utils.RespondWithError(writer, http.StatusBadRequest, "Invalid request body", map[string]string{"error": err.Error()})
+		return
+	}
+
+	err = h.deviceService.UpdatesensorRange(DeviceID, SensorID, sensorRangeUpdate.MinThreshold, sensorRangeUpdate.MaxThreshold)
+	if err != nil {
+		utils.RespondWithError(writer, http.StatusInternalServerError, "Failed to update sensor range", map[string]string{"error": err.Error()})
+		return
+	}
+
+	utils.RespondWithJSON(writer, http.StatusOK, map[string]string{
+		"message":   "sensor range updated successfully",
+		"device_id": DeviceID,
+		"sensor_id": SensorID,
+	})
+}
+
+func (h *DeviceHandler) GetSensorLogsByDeviceIDAndSensorID(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodGet {
 		utils.RespondWithError(writer, http.StatusMethodNotAllowed, "Method not allowed", nil)
 		return
 	}
@@ -162,31 +204,17 @@ func (h *DeviceHandler) UpdateCaptorRange(writer http.ResponseWriter, request *h
 		return
 	}
 
-	captorID, ok := vars["captorID"]
+	sensorID, ok := vars["sensorID"]
 	if !ok {
-		utils.RespondWithError(writer, http.StatusBadRequest, "Missing captor ID in path", nil)
+		utils.RespondWithError(writer, http.StatusBadRequest, "Missing sensor ID in path", nil)
 		return
 	}
 
-	// Manually read and decode the request body
-	var captorRangeUpdate models.CaptorRangeUpdate
-	decoder := json.NewDecoder(request.Body)
-	decoder.DisallowUnknownFields() // optional but good for catching unknown fields
-	err := decoder.Decode(&captorRangeUpdate)
+	logs, err := h.deviceService.GetSensorLogsByDeviceIDAndSensorID(deviceID, sensorID)
 	if err != nil {
-		utils.RespondWithError(writer, http.StatusBadRequest, "Invalid request body", map[string]string{"error": err.Error()})
+		utils.RespondWithError(writer, http.StatusInternalServerError, "Error getting sensor logs", map[string]string{"error": err.Error()})
 		return
 	}
 
-	err = h.deviceService.UpdateCaptorRange(captorID, captorRangeUpdate.MinThreshold, captorRangeUpdate.MaxThreshold)
-	if err != nil {
-		utils.RespondWithError(writer, http.StatusInternalServerError, "Failed to update captor range", map[string]string{"error": err.Error()})
-		return
-	}
-
-	utils.RespondWithJSON(writer, http.StatusOK, map[string]string{
-		"message":   "Captor range updated successfully",
-		"device_id": deviceID,
-		"captor_id": captorID,
-	})
+	utils.RespondWithJSON(writer, http.StatusOK, logs)
 }

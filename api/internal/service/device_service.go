@@ -1,5 +1,3 @@
-// internal/service/device_service.go
-
 package service
 
 import (
@@ -12,36 +10,49 @@ import (
 	"strings"
 )
 
+// MqttConfigPublisher defines the interface for publishing sensor configurations via MQTT.
+// This decouples the service from the concrete MqttHandler implementation.
+type MqttConfigPublisher interface {
+	SetDeviceConfig(deviceID string, sensorID string, minThreshold float64, maxThreshold float64) error
+}
+
 // DeviceService interface defines the business logic for devices
 type DeviceService interface {
 	CreateDevice(device *models.Device) error
 	GetDeviceByDeviceID(deviceID string) (*models.Device, error)
 	UpdateDeviceLastSeenAndStatus(deviceID string) error
-	CreateCaptor(captor *models.Captor) (*models.Captor, error)
+	Createsensor(sensor *models.Sensor) (*models.Sensor, error)
 	SetDeviceToLocation(ctx context.Context, id string, id2 int) error
-	GetAllDevices() ([]*models.Device, error) // Ensure this return type
-	GetOrCreateCaptor(captorID, captorName, captorType string) (*models.Captor, error)
-	GetCaptorByID(id string) (*models.Captor, error)
-	LinkCaptorToDevice(id string, id2 string) error
+	GetAllDevices() ([]*models.Device, error)
+	GetOrCreatesensor(SensorID, sensorName, SensorType string) (*models.Sensor, error)
+	GetsensorByID(id string) (*models.Sensor, error)
+	LinksensorToDevice(id string, id2 string) error
 	UpdateDeviceOperationalStatus(id string, status models.OperationalStatus) error
 	GetDeviceByID(id string) (*models.Device, error)
-	GetCaptorsByDeviceID(id string) ([]*models.Captor, error)
+	GetsensorsByDeviceID(id string) ([]*models.Sensor, error)
 	GetUnassignedDevices() ([]*models.Device, error)
 	UnassignDeviceFromLocation(id string) error
 	GetLocationByDeviceID(id string) (*models.Location, error)
 	GetDevicesSensorsLocations(ctx context.Context, page int, limit int, term string) (map[string]interface{}, error)
 	DeleteDevice(ctx context.Context, id string) error
-	UpdateCaptorRange(id string, minThreshold float64, maxThreshold float64) error
+	UpdatesensorRange(deviceID string, sensorID string, minThreshold float64, maxThreshold float64) error
+	HandleDeviceAlert(sensorId string, message string) error
+	GetSensorLogsByDeviceIDAndSensorID(id string, id2 string) ([]*models.SensorLog, error)
 }
 
 // DefaultDeviceService implements the DeviceService interface
 type DefaultDeviceService struct {
-	deviceDAO repository.DeviceDAO
+	deviceDAO           repository.DeviceDAO
+	MqttConfigPublisher MqttConfigPublisher // Inject the MQTT publisher here
 }
 
 // NewDeviceService creates a new DefaultDeviceService instance
-func NewDeviceService(dao *repository.PostgresDeviceDAO) *DefaultDeviceService {
-	return &DefaultDeviceService{deviceDAO: dao}
+// It now accepts an MqttConfigPublisher interface
+func NewDeviceService(dao *repository.PostgresDeviceDAO, mqttPublisher MqttConfigPublisher) *DefaultDeviceService {
+	return &DefaultDeviceService{
+		deviceDAO:           dao,
+		MqttConfigPublisher: mqttPublisher,
+	}
 }
 
 // CreateDevice calls the DAO to create a new device
@@ -59,40 +70,40 @@ func (s *DefaultDeviceService) UpdateDeviceLastSeenAndStatus(deviceID string) er
 	return s.deviceDAO.UpdateDeviceLastSeenAndStatus(deviceID)
 }
 
-func (s *DefaultDeviceService) CreateCaptor(captor *models.Captor) (*models.Captor, error) {
-	log.Printf("Attempting to create captor with ID: '%s', Type: '%s'\n", captor.CaptorID, captor.CaptorType)
+func (s *DefaultDeviceService) Createsensor(sensor *models.Sensor) (*models.Sensor, error) {
+	log.Printf("Attempting to create sensor with ID: '%s', Type: '%s'\n", sensor.SensorID, sensor.SensorType)
 
-	// Business logic: Check if a captor with the same ID already exists
-	existingCaptor, err := s.deviceDAO.GetCaptorByID(captor.CaptorID)
+	// Business logic: Check if a sensor with the same ID already exists
+	existingsensor, err := s.deviceDAO.GetsensorByID(sensor.SensorID)
 	if err != nil {
-		log.Printf("Error checking for existing captor with ID '%s': %v\n", captor.CaptorID, err)
+		log.Printf("Error checking for existing sensor with ID '%s': %v\n", sensor.SensorID, err)
 	}
-	if existingCaptor != nil {
-		log.Printf("Captor with ID '%s' already exists.\n", captor.CaptorID)
-		return existingCaptor, fmt.Errorf("captor with ID '%s' already exists", captor.CaptorID)
-	}
-
-	// Business logic: Sanitize or validate captor data
-	if captor.CaptorID == "" {
-		log.Println("Error: Captor ID cannot be empty.")
-		return nil, errors.New("captor ID cannot be empty")
-	}
-	if captor.CaptorType == "" {
-		log.Println("Error: Captor Type cannot be empty.")
-		return nil, errors.New("captor name cannot be empty")
+	if existingsensor != nil {
+		log.Printf("sensor with ID '%s' already exists.\n", sensor.SensorID)
+		return existingsensor, fmt.Errorf("sensor with ID '%s' already exists", sensor.SensorID)
 	}
 
-	// Call the DAO to create the captor
-	createdCaptor, err := s.deviceDAO.CreateCaptor(captor)
+	// Business logic: Sanitize or validate sensor data
+	if sensor.SensorID == "" {
+		log.Println("Error: sensor ID cannot be empty.")
+		return nil, errors.New("sensor ID cannot be empty")
+	}
+	if sensor.SensorType == "" {
+		log.Println("Error: sensor Type cannot be empty.")
+		return nil, errors.New("sensor name cannot be empty")
+	}
+
+	// Call the DAO to create the sensor
+	createdsensor, err := s.deviceDAO.Createsensor(sensor)
 	if err != nil {
-		log.Printf("Error creating captor in DAO for ID '%s': %v\n", captor.CaptorID, err)
-		return nil, fmt.Errorf("error creating captor in DAO: %w", err)
+		log.Printf("Error creating sensor in DAO for ID '%s': %v\n", sensor.SensorID, err)
+		return nil, fmt.Errorf("error creating sensor in DAO: %w", err)
 	}
 
 	// Business logic: Optionally perform actions after successful creation
-	log.Printf("Captor '%s' with ID '%s' created successfully.\n", createdCaptor.CaptorType, createdCaptor.CaptorID)
+	log.Printf("sensor '%s' with ID '%s' created successfully.\n", createdsensor.SensorType, createdsensor.SensorID)
 
-	return createdCaptor, nil
+	return createdsensor, nil
 }
 
 // SetDeviceToLocation calls the DAO to set a device to a specific location
@@ -151,55 +162,55 @@ func (s *DefaultDeviceService) GetAllDevices() ([]*models.Device, error) { // En
 
 // internal/service/device_service.go
 
-func (s *DefaultDeviceService) GetOrCreateCaptor(captorID, captorName, captorType string) (*models.Captor, error) {
-	// Try to get the captor by ID first
-	existingCaptor, err := s.deviceDAO.GetCaptorByID(captorID)
+func (s *DefaultDeviceService) GetOrCreatesensor(SensorID, sensorName, SensorType string) (*models.Sensor, error) {
+	// Try to get the sensor by ID first
+	existingsensor, err := s.deviceDAO.GetsensorByID(SensorID)
 	if err != nil {
-		return nil, fmt.Errorf("error checking for captor with ID '%s': %w", captorID, err)
+		return nil, fmt.Errorf("error checking for sensor with ID '%s': %w", SensorID, err)
 	}
-	if existingCaptor != nil {
-		return existingCaptor, nil // Captor found by ID
+	if existingsensor != nil {
+		return existingsensor, nil // sensor found by ID
 	}
 
-	// Captor not found by ID, try by name
-	existingCaptor, err = s.deviceDAO.GetCaptorByID(captorID) // Assuming you have a GetCaptorByName in your DAO
+	// sensor not found by ID, try by name
+	existingsensor, err = s.deviceDAO.GetsensorByID(SensorID) // Assuming you have a GetsensorByName in your DAO
 	if err != nil {
-		return nil, fmt.Errorf("error checking for captor with name '%s': %w", captorName, err)
+		return nil, fmt.Errorf("error checking for sensor with name '%s': %w", sensorName, err)
 	}
-	if existingCaptor != nil {
-		return existingCaptor, nil // Captor found by name
+	if existingsensor != nil {
+		return existingsensor, nil // sensor found by name
 	}
 
-	// Captor not found, create a new one
-	newCaptor := &models.Captor{
-		CaptorID:   captorID,
-		CaptorType: captorType,
+	// sensor not found, create a new one
+	newsensor := &models.Sensor{
+		SensorID:   SensorID,
+		SensorType: SensorType,
 	}
-	createdCaptor, err := s.deviceDAO.CreateCaptor(newCaptor)
+	createdsensor, err := s.deviceDAO.Createsensor(newsensor)
 	if err != nil {
-		return nil, fmt.Errorf("error creating captor '%s' with ID '%s': %w", captorName, captorID, err)
+		return nil, fmt.Errorf("error creating sensor '%s' with ID '%s': %w", sensorName, SensorID, err)
 	}
-	return createdCaptor, nil
+	return createdsensor, nil
 }
 
-// GetCaptorByID retrieves a captor record by its ID (string)
-func (s *DefaultDeviceService) GetCaptorByID(id string) (*models.Captor, error) {
-	captor, err := s.deviceDAO.GetCaptorByID(id)
+// GetsensorByID retrieves a sensor record by its ID (string)
+func (s *DefaultDeviceService) GetsensorByID(id string) (*models.Sensor, error) {
+	sensor, err := s.deviceDAO.GetsensorByID(id)
 	if err != nil {
-		return nil, fmt.Errorf("error retrieving captor with ID '%s': %w", id, err)
+		return nil, fmt.Errorf("error retrieving sensor with ID '%s': %w", id, err)
 	}
-	return captor, nil
+	return sensor, nil
 }
 
-// LinkCaptorToDevice in DefaultDeviceService
-func (s *DefaultDeviceService) LinkCaptorToDevice(deviceID string, captorID string) error {
-	// ... (device and captor existence checks) ...
+// LinksensorToDevice in DefaultDeviceService
+func (s *DefaultDeviceService) LinksensorToDevice(deviceID string, SensorID string) error {
+	// ... (device and sensor existence checks) ...
 
-	deviceCaptor := &models.DeviceCaptor{
+	devicesensor := &models.Devicesensor{
 		DeviceID: deviceID,
-		CaptorID: captorID,
+		SensorID: SensorID,
 	}
-	return s.deviceDAO.InsertDeviceCaptor(deviceCaptor) // Correct call with the struct
+	return s.deviceDAO.InsertDevicesensor(devicesensor) // Correct call with the struct
 }
 
 // UpdateDeviceOperationalStatus updates the operational status of a device
@@ -228,13 +239,13 @@ func (s *DefaultDeviceService) GetDeviceByID(id string) (*models.Device, error) 
 	return device, nil
 }
 
-// GetCaptorsByDeviceID retrieves captors associated with a device ID
-func (s *DefaultDeviceService) GetCaptorsByDeviceID(id string) ([]*models.Captor, error) {
-	captors, err := s.deviceDAO.GetCaptorsByDeviceID(id)
+// GetsensorsByDeviceID retrieves sensors associated with a device ID
+func (s *DefaultDeviceService) GetsensorsByDeviceID(id string) ([]*models.Sensor, error) {
+	sensors, err := s.deviceDAO.GetsensorsByDeviceID(id)
 	if err != nil {
-		return nil, fmt.Errorf("error retrieving captors for device ID '%s': %w", id, err)
+		return nil, fmt.Errorf("error retrieving sensors for device ID '%s': %w", id, err)
 	}
-	return captors, nil
+	return sensors, nil
 }
 
 // GetUnassignedDevices retrieves devices that are not assigned to any location
@@ -329,21 +340,54 @@ func (s *DefaultDeviceService) GetDevicesSensorsLocations(ctx context.Context, p
 	return response, nil
 }
 
-// UpdateCaptorRange updates the operational range of a captor
-func (s *DefaultDeviceService) UpdateCaptorRange(id string, minThreshold float64, maxThreshold float64) error {
-	captor, err := s.deviceDAO.GetCaptorByID(id)
+// UpdatesensorRange updates the operational range of a sensor
+func (s *DefaultDeviceService) UpdatesensorRange(deviceId string, id string, minThreshold float64, maxThreshold float64) error {
+	device, err := s.deviceDAO.GetDeviceByID(deviceId)
 	if err != nil {
-		return fmt.Errorf("error retrieving captor with ID '%s': %w", id, err)
+		return fmt.Errorf("error retrieving device with ID '%s': %w", deviceId, err)
 	}
-	if captor == nil {
-		return fmt.Errorf("captor with ID '%s' not found", id)
+	if device == nil {
+		return fmt.Errorf("device with ID '%s' not found", deviceId)
 	}
-	captor.MinThreshold = minThreshold
-	captor.MaxThreshold = maxThreshold
-	err = s.deviceDAO.UpdateCaptorRange(captor)
+
+	sensor, err := s.deviceDAO.GetsensorByID(id)
 	if err != nil {
-		return fmt.Errorf("error updating captor range for ID '%s': %w", id, err)
+		return fmt.Errorf("error retrieving sensor with ID '%s': %w", id, err)
 	}
-	log.Printf("Captor range updated successfully for ID '%s'", id)
+	if sensor == nil {
+		return fmt.Errorf("sensor with ID '%s' not found", id)
+	}
+	sensor.MinThreshold = minThreshold
+	sensor.MaxThreshold = maxThreshold
+	err = s.deviceDAO.UpdatesensorRange(sensor)
+	if err != nil {
+		return fmt.Errorf("error updating sensor range for ID '%s': %w", id, err)
+	}
+
+	err = s.MqttConfigPublisher.SetDeviceConfig(deviceId, sensor.SensorID, minThreshold, maxThreshold)
+	if err != nil {
+		log.Printf("Error publishing sensor config via MQTT for sensor ID '%s': %v", id, err)
+		return fmt.Errorf("failed to publish sensor configuration: %w", err)
+	}
+
+	log.Printf("sensor range updated successfully for ID '%s' and config published", id)
+	return nil
+}
+
+// HandleDeviceAlert processes device alerts
+func (s *DefaultDeviceService) HandleDeviceAlert(SensorID string, message string) error {
+	// Log the alert handling
+	log.Printf("Handling alert for with sensor '%s':'%s' ", SensorID, message)
+
+	// Perform any necessary business logic here
+	// For example, you might want to log the alert to a database or notify an admin
+
+	// Call the DAO to handle the alert
+	err := s.deviceDAO.HandleDeviceAlert(SensorID, message)
+	if err != nil {
+		return fmt.Errorf("error handling alert for sensor '%s': %w", SensorID, err)
+	}
+
+	log.Printf("Alert handled successfully for Sensor '%s'", SensorID)
 	return nil
 }

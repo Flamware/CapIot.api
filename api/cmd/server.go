@@ -34,26 +34,8 @@ func main() {
 	}
 
 	userRepo := repository.NewPostgresUserRepository(db)
-	deviceRepo := repository.NewPostgresDeviceDAO(db) // Corrected function name
+	deviceRepo := repository.NewPostgresDeviceDAO(db)
 	locationRepo := repository.NewPostgresLocationRepository(db)
-
-	// Initialize services
-	authService := service.NewAuthService(authRepo, userRepo, deviceRepo)
-	deviceService := service.NewDeviceService(deviceRepo)
-	locationService := service.NewLocationService(locationRepo)
-	userService := service.NewUserService(userRepo, authRepo)
-
-	// Initialize handlers
-	authHandler := handlers.NewAuthHandler(authService)
-	deviceHandler := handlers.NewDeviceHandler(deviceService)
-	locationHandler := handlers.NewLocationHandler(locationService)
-	userHandler := handlers.NewUserHandler(userService)
-	adminHandler := handlers.NewAdminHandler(
-		authService,
-		userService,
-		deviceService,
-		locationService,
-	)
 
 	// MQTT client setup.
 	mqttBroker := os.Getenv("MQTT_BROKER")
@@ -72,7 +54,34 @@ func main() {
 	}
 	log.Println("Successfully connected to MQTT broker!")
 
-	mqttHandler := handlers.NewMqttHandler(deviceService, client) // Initialize MqttHandler
+	// Initialize services in two phases to resolve circular dependency:
+	// 1. Initialize DeviceService with a nil MqttConfigPublisher initially
+	//    We'll set it later after mqttHandler is created.
+	deviceService := service.NewDeviceService(deviceRepo, nil) // Pass nil for mqttPublisher initially
+
+	// 2. Initialize MqttHandler, passing the (partially initialized) deviceService
+	mqttHandler := handlers.NewMqttHandler(deviceService, client) // Pass deviceService here
+
+	// 3. Now, set the MqttConfigPublisher on the deviceService to the mqttHandler.
+	//    This completes the circular dependency injection.
+	deviceService.MqttConfigPublisher = mqttHandler
+
+	// Initialize other services (they don't have circular dependencies with MQTT handler)
+	authService := service.NewAuthService(authRepo, userRepo, deviceRepo)
+	locationService := service.NewLocationService(locationRepo)
+	userService := service.NewUserService(userRepo, authRepo)
+
+	// Initialize handlers
+	authHandler := handlers.NewAuthHandler(authService)
+	deviceHandler := handlers.NewDeviceHandler(deviceService)
+	locationHandler := handlers.NewLocationHandler(locationService)
+	userHandler := handlers.NewUserHandler(userService)
+	adminHandler := handlers.NewAdminHandler(
+		authService,
+		userService,
+		deviceService,
+		locationService,
+	)
 
 	// Set up the router with the handlers and MQTT client
 	r := route.SetupRouter(

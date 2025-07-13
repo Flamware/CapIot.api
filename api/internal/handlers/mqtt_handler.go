@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/gorilla/mux"
 	"log"
@@ -26,19 +27,27 @@ func NewMqttHandler(deviceService *service.DefaultDeviceService, mqttClient mqtt
 	}
 }
 
-// CaptorInfo represents the structure of each captor in the availability message
+type sensorInfo struct {
+	ID           string  `json:"sensor_id"`
+	Type         string  `json:"sensor_type"`
+	MinThreshold float64 `json:"min_threshold,omitempty"`
+	MaxThreshold float64 `json:"max_threshold,omitempty"`
+}
+
+// sensorInfo represents the structure of each sensor in the availability message
 type AvailabilityPayload struct {
 	DeviceID  string       `json:"device_id"`
 	Status    string       `json:"status"`
 	Timestamp string       `json:"timestamp"`
-	Captors   []CaptorInfo `json:"captors"`
+	Sensors   []sensorInfo `json:"sensors"`
 }
 
-type CaptorInfo struct {
-	ID           string  `json:"captor_id"`
-	Type         string  `json:"captor_type"`
-	MinThreshold float64 `json:"min_threshold,omitempty"`
-	MaxThreshold float64 `json:"max_threshold,omitempty"`
+// AlertPayload reflects the structure sent by the Node.js simulator
+type AlertPayload struct {
+	DeviceID  string `json:"device_id"`
+	SensorID  string `json:"sensor_id"`
+	Alert     string `json:"alert"`
+	Timestamp string `json:"timestamp"`
 }
 
 func (h *MqttHandler) HandleDeviceAvailability(client mqtt.Client, msg mqtt.Message) {
@@ -50,6 +59,7 @@ func (h *MqttHandler) HandleDeviceAvailability(client mqtt.Client, msg mqtt.Mess
 		log.Printf("Error unmarshalling JSON for device availability: %v\n", err)
 		return
 	}
+	log.Printf("Received availability for device '%s' with sensors '%v'.\n", payload.DeviceID, payload.Sensors) // Corrected log format
 
 	if h.deviceService == nil {
 		log.Printf("ERROR: h.deviceService is nil!")
@@ -85,48 +95,53 @@ func (h *MqttHandler) HandleDeviceAvailability(client mqtt.Client, msg mqtt.Mess
 		return
 	}
 
-	// --- Step 2: Process and Create/Update Captors ---
-	for _, captor := range payload.Captors {
-		var createdCaptor *models.Captor
+	// --- Step 2: Process and Create/Update sensors ---
+	for _, sensor := range payload.Sensors {
+		var createdOrUpdatedSensor *models.Sensor // Use a more descriptive name
 
-		existingCaptor, err := h.deviceService.GetCaptorByID(captor.ID)
+		existingSensor, err := h.deviceService.GetsensorByID(sensor.ID) // Corrected variable name
 		if err != nil {
-			log.Printf("Error retrieving captor with ID '%s': %v\n", captor.ID, err)
+			log.Printf("Error retrieving sensor with ID '%s': %v\n", sensor.ID, err)
 			continue
 		}
 
-		if existingCaptor == nil {
-			newCaptor := &models.Captor{
-				CaptorID:     captor.ID,
-				CaptorType:   captor.Type,
-				MinThreshold: captor.MinThreshold,
-				MaxThreshold: captor.MaxThreshold,
+		if existingSensor == nil {
+			newSensor := &models.Sensor{ // Corrected variable name
+				SensorID:     sensor.ID,
+				SensorType:   sensor.Type,
+				MinThreshold: sensor.MinThreshold,
+				MaxThreshold: sensor.MaxThreshold,
 			}
-			createdCaptor, err = h.deviceService.CreateCaptor(newCaptor)
+			createdOrUpdatedSensor, err = h.deviceService.Createsensor(newSensor) // Corrected variable name
 			if err != nil {
-				log.Printf("Error creating captor with ID '%s': %v\n", captor.ID, err)
+				log.Printf("Error creating sensor with ID '%s': %v\n", sensor.ID, err)
 				continue
 			}
-			log.Printf("Captor '%s' created with ID '%s'.\n", createdCaptor.CaptorType, createdCaptor.CaptorID)
+			log.Printf("Sensor '%s' created with ID '%s'.\n", createdOrUpdatedSensor.SensorType, createdOrUpdatedSensor.SensorID)
 		} else {
-			log.Printf("Captor '%s' already exists with ID '%s'.\n", existingCaptor.CaptorType, existingCaptor.CaptorID)
-			createdCaptor = existingCaptor
+			log.Printf("Sensor '%s' already exists with ID '%s'.\n", existingSensor.SensorType, existingSensor.SensorID)
+			createdOrUpdatedSensor = existingSensor
 		}
 
-		// Always update thresholds regardless of existence
-		err = h.deviceService.UpdateCaptorRange(createdCaptor.CaptorID, captor.MinThreshold, captor.MaxThreshold)
-		if err != nil {
-			log.Printf("Error updating thresholds for captor '%s': %v\n", createdCaptor.CaptorID, err)
-			continue
-		}
-		log.Printf("Captor '%s' thresholds set to Min: %f, Max: %f.\n", createdCaptor.CaptorID, captor.MinThreshold, captor.MaxThreshold)
+		// Print all sensor details for debugging
+		log.Printf("Sensor details: ID='%s', Type='%s', MinThreshold=%.2f, MaxThreshold=%.2f\n",
+			createdOrUpdatedSensor.SensorID, createdOrUpdatedSensor.SensorType,
+			createdOrUpdatedSensor.MinThreshold, createdOrUpdatedSensor.MaxThreshold)
 
-		err = h.deviceService.LinkCaptorToDevice(deviceID, createdCaptor.CaptorID)
+		err = h.deviceService.LinksensorToDevice(deviceID, createdOrUpdatedSensor.SensorID)
 		if err != nil {
-			log.Printf("Error linking captor '%s' to device '%s': %v\n", createdCaptor.CaptorID, deviceID, err)
+			log.Printf("Error linking sensor '%s' to device '%s': %v\n", createdOrUpdatedSensor.SensorID, deviceID, err)
 			continue
 		}
-		log.Printf("Captor '%s' linked to device '%s'.\n", createdCaptor.CaptorID, deviceID)
+
+		// Use the thresholds that were just confirmed or updated in the database/application's state
+		err = h.SetDeviceConfig(deviceID, createdOrUpdatedSensor.SensorID, createdOrUpdatedSensor.MinThreshold, createdOrUpdatedSensor.MaxThreshold)
+		if err != nil {
+			log.Printf("Error re-sending config to device '%s' for sensor '%s': %v\n", deviceID, createdOrUpdatedSensor.SensorID, err)
+		} else {
+			log.Printf("Resent config to device '%s' for sensor '%s' (Min: %.2f, Max: %.2f)\n",
+				deviceID, createdOrUpdatedSensor.SensorID, createdOrUpdatedSensor.MinThreshold, createdOrUpdatedSensor.MaxThreshold)
+		}
 	}
 }
 
@@ -200,18 +215,6 @@ func (h *MqttHandler) SetStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Status set for device: " + deviceID))
-}
-
-// HandleDeviceData processes messages from the "iot/device/+/data" topic
-func (h *MqttHandler) HandleDeviceData(client mqtt.Client, msg mqtt.Message) {
-	topicParts := splitTopic(msg.Topic())
-	if len(topicParts) > 2 {
-		deviceID := topicParts[2]
-		payload := msg.Payload()
-		log.Printf("Received data for Device ID: %s, Payload: %s\n", deviceID, string(payload))
-	} else {
-		log.Printf("Invalid device data topic: %s\n", msg.Topic())
-	}
 }
 
 func (h *MqttHandler) HandleDeviceStatus(client mqtt.Client, msg mqtt.Message) {
@@ -295,17 +298,85 @@ func (h *MqttHandler) HandleDeviceStatus(client mqtt.Client, msg mqtt.Message) {
 	}
 }
 
-// Helper function to split the MQTT topic (you might have this elsewhere)
-func splitTopic(topic string) []string {
-	var parts []string
-	for i, r := range topic {
-		if r == '/' {
-			parts = append(parts, topic[:i])
-			topic = topic[i+1:]
-		}
+func (h *MqttHandler) SetDeviceConfig(deviceID string, sensorID string, minThreshold float64, maxThreshold float64) error {
+	if deviceID == "" {
+		return fmt.Errorf("deviceID cannot be empty")
 	}
-	parts = append(parts, topic)
-	return parts
+	if sensorID == "" {
+		return fmt.Errorf("sensorID cannot be empty")
+	}
+
+	// Construct the payload to be sent via MQTT
+	// This payload now explicitly includes sensor_id and its specific thresholds
+	mqttPayload := map[string]interface{}{
+		"sensor_id":     sensorID,
+		"min_threshold": minThreshold,
+		"max_threshold": maxThreshold,
+	}
+
+	payloadBytes, err := json.Marshal(mqttPayload)
+	if err != nil {
+		log.Printf("Error marshalling MQTT payload: %v", err)
+		return fmt.Errorf("failed to marshal MQTT payload: %w", err)
+	}
+
+	// The topic remains devices/config/deviceID as per your request,
+	// with sensor-specific configuration now inside the payload.
+	topic := "devices/config/" + deviceID
+	token := h.mqttClient.Publish(topic, 0, false, payloadBytes)
+	token.Wait() // Wait for the publish operation to complete
+	if token.Error() != nil {
+		log.Printf("MQTT publish error: %v", token.Error())
+		return fmt.Errorf("failed to publish MQTT message: %w", token.Error())
+	}
+
+	log.Printf("Configuration sent for sensor '%s' on device '%s' with Min: %.2f, Max: %.2f", sensorID, deviceID, minThreshold, maxThreshold)
+	return nil // Return nil on success
 }
 
-// Add other handler functions for different MQTT topics as needed
+func (h *MqttHandler) HandleDeviceAlert(client mqtt.Client, message mqtt.Message) {
+	log.Printf("Received alert on topic: %s, message: %s\n", message.Topic(), string(message.Payload()))
+
+	parts := splitTopic(message.Topic())
+	log.Println("Split topic parts:", parts) // Debugging log to see the split parts
+	// Ensure there are at least 3 parts for "devices/alert/deviceID"
+	if len(parts) >= 3 && parts[0] == "devices" && parts[1] == "alert" {
+		deviceIDFromTopic := parts[2] // Device ID is the third part
+
+		var payload AlertPayload
+		err := json.Unmarshal(message.Payload(), &payload)
+		if err != nil {
+			log.Printf("Error unmarshalling JSON for device alert on topic '%s': %v\n", message.Topic(), err)
+			return
+		}
+
+		// Validate deviceID from topic matches payload
+		if payload.DeviceID != deviceIDFromTopic { // Use deviceIDFromTopic here
+			log.Printf("Warning: DeviceID mismatch between topic (%s) and payload (%s) for alert on topic %s\n",
+				deviceIDFromTopic, payload.DeviceID, message.Topic())
+		}
+
+		// Updated log message to reflect removed fields
+		log.Printf("Received alert '%s' from device '%s' (sensor '%s', timestamp '%s').\n",
+			payload.Alert, payload.DeviceID, payload.SensorID, payload.Timestamp)
+
+		// Pass payload data to the service handler
+		// Note: The service layer's HandleDeviceAlert might still expect 'type' or 'value'
+		// If so, you'll need to adapt the service interface/implementation or populate
+		// these fields based on `sensor_id` lookup in your DB. For now, matching the direct payload.
+		err = h.deviceService.HandleDeviceAlert(payload.SensorID, payload.Alert)
+		if err != nil {
+			log.Printf("Error handling device alert: %v", err)
+			return // IMPORTANT: handle the error
+		}
+	} else {
+		// Log a more informative message if the topic format is unexpected
+		log.Printf("Received message on unexpected topic format for alert: %s (Expected 'devices/alert/deviceID')\n", message.Topic())
+	}
+}
+
+// Helper function to split the MQTT topic (you might have this elsewhere)
+func splitTopic(topic string) []string {
+	// This is the correct and idiomatic way to split a string by a delimiter in Go
+	return strings.Split(topic, "/")
+}

@@ -27,7 +27,7 @@ type AuthRepository struct {
 	cachedToken     string
 	tokenExpiryTime time.Time
 	mu              sync.Mutex
-	tokenFile       string // Path to save the token to
+	tokenFile       string
 }
 
 func NewAuthRepository() (*AuthRepository, error) {
@@ -68,6 +68,8 @@ func NewAuthRepository() (*AuthRepository, error) {
 	} else {
 		log.Println("✅ Token loaded from file.")
 	}
+	// Log token expiry time
+	log.Printf("ℹ️ Token will expire at: %s", repo.tokenExpiryTime.Format(time.RFC3339))
 
 	// Initialize the management client with the token
 	mgmt, err := management.New(repo.auth0Domain, management.WithStaticToken(repo.cachedToken))
@@ -128,7 +130,9 @@ func (r *AuthRepository) getManagementAPIToken() (string, error) {
 	// Cache the token and its expiry time
 	r.cachedToken = tokenResp.AccessToken
 	r.tokenExpiryTime = time.Now().Add(time.Duration(tokenResp.ExpiresIn-60) * time.Second) // buffer 60s
-
+	r.cachedToken = tokenResp.AccessToken
+	r.tokenExpiryTime = time.Now().Add(time.Duration(tokenResp.ExpiresIn-60) * time.Second) // buffer 60s
+	log.Printf("ℹ️ Token will expire at: %s", r.tokenExpiryTime.Format(time.RFC3339))
 	// Save token to file for persistence
 	err = r.saveTokenToFile()
 	if err != nil {
@@ -324,9 +328,12 @@ func extractAuth0IDAndEmail(idToken string) (string, string, error) {
 
 // GetUserRolesByAuth0ID retrieves the roles of a user by their Auth0 user ID
 func (r *AuthRepository) GetUserRolesByAuth0ID(auth0UserID string) ([]string, error) {
-	if r.mgmt == nil {
-		return nil, fmt.Errorf("auth0 management client is not initialized")
+	// Ensure the management client is initialized and the token is valid
+	err := r.ensureMgmtClient()
+	if err != nil {
+		return nil, fmt.Errorf("auth0 management client is not initialized: %w", err)
 	}
+
 	// Retrieve roles associated with the user by their Auth0 ID
 	roles, err := r.mgmt.User.Roles(context.Background(), auth0UserID)
 	if err != nil {

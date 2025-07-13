@@ -63,7 +63,7 @@ func SetupAdminRoutes(r *mux.Router,
 	// Define the handler for starting monitoring for a device
 	adminRouter.HandleFunc("/devices/{deviceID}", mqttHandler.SetStatus).Methods(http.MethodPatch)
 
-	// Define the handler for updating range of a device's captor
-	adminRouter.HandleFunc("/devices/{deviceID}/captors/{captorID}/range", deviceHandler.UpdateCaptorRange).Methods(http.MethodPut)
+	// Define the handler for updating range of a device's sensor
+	adminRouter.HandleFunc("/devices/{deviceID}/sensors/{SensorID}/range", deviceHandler.UpdatesensorRange).Methods(http.MethodPut)
 
 }

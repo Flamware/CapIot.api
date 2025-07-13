@@ -13,9 +13,9 @@ type DeviceDAO interface {
 	SetDeviceToLocation(ctx context.Context, id string, id2 int) error
 	IsDeviceAssigned(deviceID string) (bool, error) // Add this method
 	GetDeviceByDeviceID(deviceID string) (*models.Device, error)
-	GetCaptorByID(captorID string) (*models.Captor, error)
-	CreateCaptor(captor *models.Captor) (*models.Captor, error)
-	InsertDeviceCaptor(deviceCaptor *models.DeviceCaptor) error
+	GetsensorByID(SensorID string) (*models.Sensor, error)
+	Createsensor(sensor *models.Sensor) (*models.Sensor, error)
+	InsertDevicesensor(devicesensor *models.Devicesensor) error
 	FindAllWithSensorsAndLocations(ctx context.Context, limit int, offset int, search string) ([]*models.DeviceWithSensorsAndLocation, error)
 	CountAll(ctx context.Context, search string) (int, error)
 }
