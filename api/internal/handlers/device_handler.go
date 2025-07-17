@@ -178,7 +178,12 @@ func (h *DeviceHandler) UpdatesensorRange(writer http.ResponseWriter, request *h
 		return
 	}
 
-	err = h.deviceService.UpdatesensorRange(DeviceID, SensorID, sensorRangeUpdate.MinThreshold, sensorRangeUpdate.MaxThreshold)
+	if sensorRangeUpdate.MinThreshold == nil || sensorRangeUpdate.MaxThreshold == nil {
+		utils.RespondWithError(writer, http.StatusBadRequest, "MinThreshold and MaxThreshold cannot be null", nil)
+		return
+	}
+
+	err = h.deviceService.UpdatesensorRange(DeviceID, SensorID, *sensorRangeUpdate.MinThreshold, *sensorRangeUpdate.MaxThreshold)
 	if err != nil {
 		utils.RespondWithError(writer, http.StatusInternalServerError, "Failed to update sensor range", map[string]string{"error": err.Error()})
 		return
@@ -217,4 +222,143 @@ func (h *DeviceHandler) GetSensorLogsByDeviceIDAndSensorID(writer http.ResponseW
 	}
 
 	utils.RespondWithJSON(writer, http.StatusOK, logs)
+}
+
+func (h *DeviceHandler) GetLogs(w http.ResponseWriter, r *http.Request) {
+	// Get parameters from the request path using gorilla/mux.
+	vars := mux.Vars(r)
+	deviceID := vars["deviceID"]
+	sensorID := vars["sensorID"]
+
+	var logs []*models.SensorLog // Declare a slice to hold the fetched logs
+	var err error                // Declare an error variable
+
+	if deviceID != "" && sensorID != "" {
+		logs, err = h.deviceService.GetSensorLogsByDeviceIDAndSensorID(deviceID, sensorID)
+		if err != nil {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error fetching logs for specific device and sensor", map[string]string{"error": err.Error()})
+			return // Important: return after responding to prevent further execution
+		}
+		utils.RespondWithJSON(w, http.StatusOK, logs)
+		return // Important: return after responding to prevent further execution
+	}
+
+	if deviceID != "" {
+		logs, err = h.deviceService.GetDeviceLogsByDeviceID(deviceID)
+		if err != nil {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error fetching all logs for device", map[string]string{"error": err.Error()})
+			return
+		}
+		utils.RespondWithJSON(w, http.StatusOK, logs)
+		return
+	}
+
+	if sensorID != "" {
+		logs, err = h.deviceService.GetSensorLogsBySensorID(sensorID) // Assuming this method exists in your service
+		if err != nil {
+			utils.RespondWithError(w, http.StatusInternalServerError, "Error fetching logs for specific sensor across all devices", map[string]string{"error": err.Error()})
+			return
+		}
+		utils.RespondWithJSON(w, http.StatusOK, logs)
+		return
+	}
+
+	// Get the userId
+	userID, err := utils.GetUserIDFromContext(r.Context())
+	if err != nil {
+		log.Printf("Failed to retrieve user ID: %v", err)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	log.Printf("Retrieved user ID: %s", userID)
+
+	logs, err = h.deviceService.GetAllLogsByUser(userID)
+	if err != nil {
+		utils.RespondWithError(w, http.StatusInternalServerError, "Error fetching all logs", map[string]string{"error": err.Error()})
+		return
+	}
+	utils.RespondWithJSON(w, http.StatusOK, logs)
+	return
+}
+
+func (h *DeviceHandler) MarkSensorLogsAsRead(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		utils.RespondWithError(writer, http.StatusMethodNotAllowed, "Method not allowed", nil)
+		return
+	}
+
+	vars := mux.Vars(request)
+	sensorID, ok := vars["sensorID"]
+	if !ok {
+		utils.RespondWithError(writer, http.StatusBadRequest, "Missing sensor ID in path", nil)
+		return
+	}
+
+	// Define a struct to match the expected JSON payload
+	var payload struct {
+		LogIDs []int `json:"log_ids"`
+	}
+
+	// Decode the JSON payload into the struct
+	if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+		utils.RespondWithError(writer, http.StatusBadRequest, "Invalid request body", map[string]string{"error": err.Error()})
+		return
+	}
+
+	// Check if the sensor exists
+	sensor, err := h.deviceService.GetsensorByID(sensorID)
+	if err != nil {
+		utils.RespondWithError(writer, http.StatusInternalServerError, "Error getting sensor", map[string]string{"error": err.Error()})
+		return
+	}
+	if sensor == nil {
+		utils.RespondWithError(writer, http.StatusNotFound, "Sensor not found", nil)
+		return
+	}
+
+	// Check if the user has access to the sensor
+	userID, err := utils.GetUserIDFromContext(request.Context())
+	if err != nil {
+		log.Printf("Failed to retrieve user ID: %v", err)
+		http.Error(writer, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	_, err = h.deviceService.UserHasAccessToSensor(userID, sensorID)
+	if err != nil {
+		utils.RespondWithError(writer, http.StatusInternalServerError, "Error checking user access to sensor", map[string]string{"error": err.Error()})
+		return
+	}
+
+	// Mark the logs as read
+	if err := h.deviceService.MarkSensorLogsAsRead(sensorID, payload.LogIDs); err != nil {
+		utils.RespondWithError(writer, http.StatusInternalServerError, "Error marking sensor logs as read", map[string]string{"error": err.Error()})
+		return
+	}
+
+	writer.WriteHeader(http.StatusOK)
+	writer.Write([]byte("Sensor logs marked as read successfully")) // Could also use RespondWithJSON for consistency
+}
+
+func (h *DeviceHandler) MarkAllLogsAsRead(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		utils.RespondWithError(writer, http.StatusMethodNotAllowed, "Method not allowed", nil)
+		return
+	}
+
+	// Get the userId
+	userID, err := utils.GetUserIDFromContext(request.Context())
+	if err != nil {
+		log.Printf("Failed to retrieve user ID: %v", err)
+		http.Error(writer, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	err = h.deviceService.MarkAllLogsAsRead(userID)
+	if err != nil {
+		utils.RespondWithError(writer, http.StatusInternalServerError, "Error marking all logs as read", map[string]string{"error": err.Error()})
+		return
+	}
+
+	writer.WriteHeader(http.StatusOK)
+	writer.Write([]byte("All logs marked as read successfully")) // Could also use RespondWithJSON for consistency
 }

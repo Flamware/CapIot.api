@@ -38,6 +38,12 @@ type DeviceService interface {
 	UpdatesensorRange(deviceID string, sensorID string, minThreshold float64, maxThreshold float64) error
 	HandleDeviceAlert(sensorId string, message string) error
 	GetSensorLogsByDeviceIDAndSensorID(id string, id2 string) ([]*models.SensorLog, error)
+	GetDeviceLogsByDeviceID(id string) ([]*models.SensorLog, error)
+	GetSensorLogsBySensorID(id string) ([]*models.SensorLog, error)
+	GetAllLogsByUser(userId int) ([]*models.SensorLog, error)
+	UserHasAccessToSensor(id int, id2 string) (bool, error)
+	MarkSensorLogsAsRead(id string, logIds []int) error
+	MarkAllLogsAsRead(id int) error
 }
 
 // DefaultDeviceService implements the DeviceService interface
@@ -341,36 +347,41 @@ func (s *DefaultDeviceService) GetDevicesSensorsLocations(ctx context.Context, p
 }
 
 // UpdatesensorRange updates the operational range of a sensor
-func (s *DefaultDeviceService) UpdatesensorRange(deviceId string, id string, minThreshold float64, maxThreshold float64) error {
-	device, err := s.deviceDAO.GetDeviceByID(deviceId)
+func (s *DefaultDeviceService) UpdatesensorRange(deviceID string, sensorID string, minThreshold float64, maxThreshold float64) error {
+	// Validate device existence
+	device, err := s.deviceDAO.GetDeviceByID(deviceID)
 	if err != nil {
-		return fmt.Errorf("error retrieving device with ID '%s': %w", deviceId, err)
+		return fmt.Errorf("error retrieving device with ID '%s': %w", deviceID, err)
 	}
 	if device == nil {
-		return fmt.Errorf("device with ID '%s' not found", deviceId)
+		return fmt.Errorf("device with ID '%s' not found", deviceID)
 	}
 
-	sensor, err := s.deviceDAO.GetsensorByID(id)
+	// Validate sensor existence
+	sensor, err := s.deviceDAO.GetsensorByID(sensorID)
 	if err != nil {
-		return fmt.Errorf("error retrieving sensor with ID '%s': %w", id, err)
+		return fmt.Errorf("error retrieving sensor with ID '%s': %w", sensorID, err)
 	}
 	if sensor == nil {
-		return fmt.Errorf("sensor with ID '%s' not found", id)
-	}
-	sensor.MinThreshold = minThreshold
-	sensor.MaxThreshold = maxThreshold
-	err = s.deviceDAO.UpdatesensorRange(sensor)
-	if err != nil {
-		return fmt.Errorf("error updating sensor range for ID '%s': %w", id, err)
+		return fmt.Errorf("sensor with ID '%s' not found", sensorID)
 	}
 
-	err = s.MqttConfigPublisher.SetDeviceConfig(deviceId, sensor.SensorID, minThreshold, maxThreshold)
+	// Update sensor thresholds
+	sensor.MinThreshold = &minThreshold
+	sensor.MaxThreshold = &maxThreshold
+	err = s.deviceDAO.UpdatesensorRange(sensor)
 	if err != nil {
-		log.Printf("Error publishing sensor config via MQTT for sensor ID '%s': %v", id, err)
+		return fmt.Errorf("error updating sensor range for ID '%s': %w", sensorID, err)
+	}
+
+	// Publish updated configuration via MQTT
+	err = s.MqttConfigPublisher.SetDeviceConfig(deviceID, sensor.SensorID, minThreshold, maxThreshold)
+	if err != nil {
+		log.Printf("Error publishing sensor config via MQTT for sensor ID '%s': %v", sensorID, err)
 		return fmt.Errorf("failed to publish sensor configuration: %w", err)
 	}
 
-	log.Printf("sensor range updated successfully for ID '%s' and config published", id)
+	log.Printf("Sensor range updated successfully for ID '%s' and config published", sensorID)
 	return nil
 }
 
@@ -389,5 +400,133 @@ func (s *DefaultDeviceService) HandleDeviceAlert(SensorID string, message string
 	}
 
 	log.Printf("Alert handled successfully for Sensor '%s'", SensorID)
+	return nil
+}
+
+// GetSensorLogsByDeviceIDAndSensorID retrieves sensor logs for a specific device and sensor
+func (s *DefaultDeviceService) GetSensorLogsByDeviceIDAndSensorID(deviceID string, sensorID string) ([]*models.SensorLog, error) {
+	log.Printf("Fetching logs for Device ID: '%s', Sensor ID: '%s'", deviceID, sensorID)
+
+	// Validate input
+	if strings.TrimSpace(deviceID) == "" || strings.TrimSpace(sensorID) == "" {
+		return nil, fmt.Errorf("device ID and sensor ID cannot be empty")
+	}
+
+	// Call the DAO to get the logs
+	logs, err := s.deviceDAO.GetSensorLogsByDeviceIDAndSensorID(deviceID, sensorID)
+	if err != nil {
+		return nil, fmt.Errorf("error retrieving logs for Device ID '%s' and Sensor ID '%s': %w", deviceID, sensorID, err)
+	}
+
+	log.Printf("Retrieved %d logs for Device ID: '%s', Sensor ID: '%s'", len(logs), deviceID, sensorID)
+	return logs, nil
+}
+
+// GetDeviceLogsByDeviceID retrieves all logs for a specific device
+func (s *DefaultDeviceService) GetDeviceLogsByDeviceID(deviceID string) ([]*models.SensorLog, error) {
+	log.Printf("Fetching logs for Device ID: '%s'", deviceID)
+
+	// Validate input
+	if strings.TrimSpace(deviceID) == "" {
+		return nil, fmt.Errorf("device ID cannot be empty")
+	}
+
+	// Call the DAO to get the logs
+	logs, err := s.deviceDAO.GetDeviceLogsByDeviceID(deviceID)
+	if err != nil {
+		return nil, fmt.Errorf("error retrieving logs for Device ID '%s': %w", deviceID, err)
+	}
+
+	log.Printf("Retrieved %d logs for Device ID: '%s'", len(logs), deviceID)
+	return logs, nil
+}
+
+// GetSensorLogsBySensorID retrieves all logs for a specific sensor
+func (s *DefaultDeviceService) GetSensorLogsBySensorID(sensorID string) ([]*models.SensorLog, error) {
+	log.Printf("Fetching logs for Sensor ID: '%s'", sensorID)
+
+	// Validate input
+	if strings.TrimSpace(sensorID) == "" {
+		return nil, fmt.Errorf("sensor ID cannot be empty")
+	}
+
+	// Call the DAO to get the logs
+	logs, err := s.deviceDAO.GetSensorLogsBySensorID(sensorID)
+	if err != nil {
+		return nil, fmt.Errorf("error retrieving logs for Sensor ID '%s': %w", sensorID, err)
+	}
+
+	log.Printf("Retrieved %d logs for Sensor ID: '%s'", len(logs), sensorID)
+	return logs, nil
+}
+
+// GetAllLogsByUser retrieves all logs for the user
+func (s *DefaultDeviceService) GetAllLogsByUser(userId int) ([]*models.SensorLog, error) {
+	log.Println("Fetching all logs for the user")
+
+	// Call the DAO to get all logs
+	logs, err := s.deviceDAO.GetAllLogsByUser(userId)
+	if err != nil {
+		return nil, fmt.Errorf("error retrieving all logs: %w", err)
+	}
+
+	log.Printf("Retrieved %d logs for the user", len(logs))
+	return logs, nil
+}
+
+// UserHasAccessToSensor checks if a user has access to a specific sensor
+func (s *DefaultDeviceService) UserHasAccessToSensor(userId int, sensorID string) (bool, error) {
+	log.Printf("Checking access for User ID: '%d' to Sensor ID: '%s'", userId, sensorID)
+
+	// Validate input
+	if userId <= 0 || strings.TrimSpace(sensorID) == "" {
+		return false, fmt.Errorf("invalid user ID or sensor ID")
+	}
+
+	// Call the DAO to check access
+	hasAccess, err := s.deviceDAO.UserHasAccessToSensor(userId, sensorID)
+	if err != nil {
+		return false, fmt.Errorf("error checking access for User ID '%d' to Sensor ID '%s': %w", userId, sensorID, err)
+	}
+
+	log.Printf("User ID: '%d' has access to Sensor ID: '%s': %v", userId, sensorID, hasAccess)
+	return hasAccess, nil
+}
+
+// MarkSensorLogsAsRead marks sensor logs as read for a specific sensor
+func (s *DefaultDeviceService) MarkSensorLogsAsRead(sensorID string, logIds []int) error {
+	log.Printf("Marking logs as read for Sensor ID: '%s'", sensorID)
+
+	// Validate input
+	if strings.TrimSpace(sensorID) == "" {
+		return fmt.Errorf("sensor ID cannot be empty")
+	}
+
+	// Call the DAO to mark logs as read
+	err := s.deviceDAO.MarkSensorLogsAsRead(sensorID, logIds)
+	if err != nil {
+		return fmt.Errorf("error marking logs as read for Sensor ID '%s': %w", sensorID, err)
+	}
+
+	log.Printf("Successfully marked logs as read for Sensor ID: '%s'", sensorID)
+	return nil
+}
+
+// MarkAllLogsAsRead marks all logs as read for a specific user
+func (s *DefaultDeviceService) MarkAllLogsAsRead(userId int) error {
+	log.Printf("Marking all logs as read for User ID: '%d'", userId)
+
+	// Validate input
+	if userId <= 0 {
+		return fmt.Errorf("invalid user ID")
+	}
+
+	// Call the DAO to mark all logs as read
+	err := s.deviceDAO.MarkAllLogsAsRead(userId)
+	if err != nil {
+		return fmt.Errorf("error marking all logs as read for User ID '%d': %w", userId, err)
+	}
+
+	log.Printf("Successfully marked all logs as read for User ID: '%d'", userId)
 	return nil
 }

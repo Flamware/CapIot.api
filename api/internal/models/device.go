@@ -12,24 +12,24 @@ type Device struct {
 
 // sensor represents the sensor type data.
 type Sensor struct {
-	SensorID     string  `json:"sensor_id" db:"sensor_id"`
-	SensorType   string  `json:"sensor_type" db:"sensor_type"`
-	MinThreshold float64 `json:"min_threshold,omitempty" db:"min_threshold"`
-	MaxThreshold float64 `json:"max_threshold,omitempty" db:"max_threshold"`
+	SensorID     string   `json:"sensor_id" db:"sensor_id"`
+	SensorType   string   `json:"sensor_type" db:"sensor_type"`
+	MinThreshold *float64 `json:"min_threshold,omitempty" db:"min_threshold"`
+	MaxThreshold *float64 `json:"max_threshold,omitempty" db:"max_threshold"`
 }
 
 type SensorRangeUpdate struct {
-	SensorID     string  `json:"sensor_id" db:"sensor_id"`
-	MinThreshold float64 `json:"min_threshold,omitempty" db:"min_threshold"`
-	MaxThreshold float64 `json:"max_threshold,omitempty" db:"max_threshold"`
+	SensorID     string   `json:"sensor_id" db:"sensor_id"`
+	MinThreshold *float64 `json:"min_threshold,omitempty" db:"min_threshold"`
+	MaxThreshold *float64 `json:"max_threshold,omitempty" db:"max_threshold"`
 }
 
 // Devicesensor represents the link between a device and a specific sensor instance.
 type Devicesensor struct {
-	DeviceID     string  `json:"device_id" db:"device_id"`
-	SensorID     string  `json:"sensor_id" db:"sensor_id"`
-	MinThreshold float64 `json:"min_threshold,omitempty" db:"min_threshold"`
-	MaxThreshold float64 `json:"max_threshold,omitempty" db:"max_threshold"`
+	DeviceID     string   `json:"device_id" db:"device_id"`
+	SensorID     string   `json:"sensor_id" db:"sensor_id"`
+	MinThreshold *float64 `json:"min_threshold,omitempty" db:"min_threshold"`
+	MaxThreshold *float64 `json:"max_threshold,omitempty" db:"max_threshold"`
 }
 
 type SensorLog struct {

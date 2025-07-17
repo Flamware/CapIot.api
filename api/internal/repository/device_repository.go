@@ -30,6 +30,13 @@ type DeviceDAO interface {
 	Updatesensor(sensor *models.Sensor) error
 	UpdatesensorRange(sensor *models.Sensor) error
 	HandleDeviceAlert(SensorID string, message string) error
+	GetSensorLogsBySensorID(id string) ([]*models.SensorLog, error)
+	GetSensorLogsByDeviceIDAndSensorID(id string, id2 string) ([]*models.SensorLog, error)
+	GetDeviceLogsByDeviceID(id string) ([]*models.SensorLog, error)
+	GetAllLogsByUser(userId int) ([]*models.SensorLog, error)
+	UserHasAccessToSensor(id int, id2 string) (bool, error)
+	MarkSensorLogsAsRead(id string, logIds []int) error
+	MarkAllLogsAsRead(id int) error
 }
 
 // PostgresDeviceDAO implements the DeviceDAO interface using PostgreSQL.
@@ -124,7 +131,7 @@ func (d *PostgresDeviceDAO) InsertDevicesensor(dc *models.Devicesensor) error {
 // GetsensorByID retrieves a sensor record by its ID (string)
 func (d *PostgresDeviceDAO) GetsensorByID(id string) (*models.Sensor, error) {
 	stmt := `
-       SELECT sensor_id, sensor_type, min_threshold, max_threshold  -- <--- Selecting 4 columns
+       SELECT sensor_id, sensor_type, min_threshold, max_threshold
        FROM sensors
        WHERE sensor_id = $1
     `
@@ -441,4 +448,177 @@ func (d *PostgresDeviceDAO) GetSensorLog(sensorID string) ([]*models.SensorLog, 
 	}
 
 	return logs, nil
+}
+
+func (d *PostgresDeviceDAO) GetSensorLogsBySensorID(id string) ([]*models.SensorLog, error) {
+	rows, err := d.db.Query("SELECT sensor_id, log_timestamp, log_content, log_read, log_id FROM sensor_log WHERE sensor_id = $1", id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query sensor logs: %w", err)
+	}
+	defer rows.Close()
+
+	var logs []*models.SensorLog
+	for rows.Next() {
+		var log models.SensorLog
+		if err := rows.Scan(&log.SensorID, &log.Timestamp, &log.Content, &log.Read, &log.LogID); err != nil {
+			return nil, fmt.Errorf("failed to scan sensor log: %w", err)
+		}
+		logs = append(logs, &log)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error during row iteration: %w", err)
+	}
+
+	return logs, nil
+}
+
+func (d *PostgresDeviceDAO) GetSensorLogsByDeviceIDAndSensorID(deviceID string, sensorID string) ([]*models.SensorLog, error) {
+	rows, err := d.db.Query(`
+		SELECT sl.sensor_id, sl.log_timestamp, sl.log_content, sl.log_read, sl.log_id
+		FROM sensor_log sl
+		JOIN device_sensors ds ON sl.sensor_id = ds.sensor_id
+		WHERE ds.device_id = $1 AND ds.sensor_id = $2
+	`, deviceID, sensorID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query sensor logs: %w", err)
+	}
+	defer rows.Close()
+
+	var logs []*models.SensorLog
+	for rows.Next() {
+		var log models.SensorLog
+		if err := rows.Scan(&log.SensorID, &log.Timestamp, &log.Content, &log.Read, &log.LogID); err != nil {
+			return nil, fmt.Errorf("failed to scan sensor log: %w", err)
+		}
+		logs = append(logs, &log)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error during row iteration: %w", err)
+	}
+
+	return logs, nil
+}
+
+func (d *PostgresDeviceDAO) GetDeviceLogsByDeviceID(deviceID string) ([]*models.SensorLog, error) {
+	rows, err := d.db.Query(`
+		SELECT sl.sensor_id, sl.log_timestamp, sl.log_content, sl.log_read, sl.log_id
+		FROM sensor_log sl
+		JOIN device_sensors ds ON sl.sensor_id = ds.sensor_id
+		WHERE ds.device_id = $1
+	`, deviceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query device logs: %w", err)
+	}
+	defer rows.Close()
+
+	var logs []*models.SensorLog
+	for rows.Next() {
+		var log models.SensorLog
+		if err := rows.Scan(&log.SensorID, &log.Timestamp, &log.Content, &log.Read, &log.LogID); err != nil {
+			return nil, fmt.Errorf("failed to scan device log: %w", err)
+		}
+		logs = append(logs, &log)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error during row iteration: %w", err)
+	}
+
+	return logs, nil
+}
+
+func (d *PostgresDeviceDAO) GetAllLogsByUser(userID int) ([]*models.SensorLog, error) {
+	// The SQL query correctly joins sensor logs with device sensors, device locations,
+	// and user locations to ensure that only logs from devices located in
+	// locations assigned to the given user are returned.
+	rows, err := d.db.Query(`
+        SELECT sl.sensor_id, sl.log_timestamp, sl.log_content, sl.log_read, sl.log_id
+        FROM sensor_log sl
+        JOIN device_sensors ds ON sl.sensor_id = ds.sensor_id
+        JOIN device_location dl ON ds.device_id = dl.device_id
+        JOIN user_location ul ON ul.user_id = $1::INTEGER AND ul.location_id = dl.location_id
+    `, userID)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to query all logs by user: %w", err)
+	}
+	defer rows.Close()
+
+	var logs []*models.SensorLog
+	for rows.Next() {
+		var log models.SensorLog
+		// Ensure the fields in Scan match the order of columns in the SELECT statement
+		if err := rows.Scan(&log.SensorID, &log.Timestamp, &log.Content, &log.Read, &log.LogID); err != nil {
+			return nil, fmt.Errorf("failed to scan sensor log: %w", err)
+		}
+		logs = append(logs, &log)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error during row iteration: %w", err)
+	}
+	return logs, nil
+}
+
+func (d *PostgresDeviceDAO) UserHasAccessToSensor(userID int, sensorID string) (bool, error) {
+	query := `
+		SELECT EXISTS (
+			SELECT 1
+			FROM device_sensors ds
+			JOIN device_location dl ON ds.device_id = dl.device_id
+			JOIN user_location ul ON dl.location_id = ul.location_id
+			WHERE ul.user_id = $1 AND ds.sensor_id = $2
+		)
+	`
+	var hasAccess bool
+	err := d.db.QueryRow(query, userID, sensorID).Scan(&hasAccess)
+	if err != nil {
+		return false, fmt.Errorf("failed to check user access to sensor: %w", err)
+	}
+	return hasAccess, nil
+}
+
+func (d *PostgresDeviceDAO) MarkSensorLogsAsRead(sensorID string, logIds []int) error {
+	if len(logIds) == 0 {
+		return nil // No logs to mark as read
+	}
+
+	// Create a placeholder string for the IN clause
+	placeholders := make([]string, len(logIds))
+	args := make([]interface{}, len(logIds)+1)
+	for i, id := range logIds {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		args[i] = id
+	}
+	args[len(logIds)] = sensorID // Last argument is the sensor ID
+
+	query := fmt.Sprintf(`
+		UPDATE sensor_log
+		SET log_read = TRUE
+		WHERE log_id IN (%s) AND sensor_id = $%d
+	`, strings.Join(placeholders, ", "), len(args))
+
+	_, err := d.db.Exec(query, args...)
+	if err != nil {
+		return fmt.Errorf("failed to mark sensor logs as read: %w", err)
+	}
+	return nil
+}
+
+func (d *PostgresDeviceDAO) MarkAllLogsAsRead(userID int) error {
+	// Check all location attributed to the user
+	query := `
+		UPDATE sensor_log sl
+		SET log_read = TRUE
+		FROM device_sensors ds
+		JOIN device_location dl ON ds.device_id = dl.device_id
+		JOIN user_location ul ON dl.location_id = ul.location_id
+		WHERE ul.user_id = $1 AND sl.sensor_id = ds.sensor_id
+	`
+	_, err := d.db.Exec(query, userID)
+	if err != nil {
+		return fmt.Errorf("failed to mark all logs as read for user %d: %w", userID, err)
+	}
+	return nil
 }

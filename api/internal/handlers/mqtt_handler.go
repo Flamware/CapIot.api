@@ -109,8 +109,8 @@ func (h *MqttHandler) HandleDeviceAvailability(client mqtt.Client, msg mqtt.Mess
 			newSensor := &models.Sensor{ // Corrected variable name
 				SensorID:     sensor.ID,
 				SensorType:   sensor.Type,
-				MinThreshold: sensor.MinThreshold,
-				MaxThreshold: sensor.MaxThreshold,
+				MinThreshold: &sensor.MinThreshold,
+				MaxThreshold: &sensor.MaxThreshold,
 			}
 			createdOrUpdatedSensor, err = h.deviceService.Createsensor(newSensor) // Corrected variable name
 			if err != nil {
@@ -135,7 +135,7 @@ func (h *MqttHandler) HandleDeviceAvailability(client mqtt.Client, msg mqtt.Mess
 		}
 
 		// Use the thresholds that were just confirmed or updated in the database/application's state
-		err = h.SetDeviceConfig(deviceID, createdOrUpdatedSensor.SensorID, createdOrUpdatedSensor.MinThreshold, createdOrUpdatedSensor.MaxThreshold)
+		err = h.SetDeviceConfig(deviceID, createdOrUpdatedSensor.SensorID, *createdOrUpdatedSensor.MinThreshold, *createdOrUpdatedSensor.MaxThreshold)
 		if err != nil {
 			log.Printf("Error re-sending config to device '%s' for sensor '%s': %v\n", deviceID, createdOrUpdatedSensor.SensorID, err)
 		} else {
