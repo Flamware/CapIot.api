@@ -14,7 +14,7 @@ type DefaultLocationService struct {
 type LocationService interface {
 	CreateLocation(location models.Location) error
 	GetAllLocations(ctx context.Context, page int, limit int, term string) (map[string]interface{}, error)
-	GetsensorsByLocationID(locationID string) ([]models.Sensor, error)
+	GetComponentsByLocationID(locationID string) ([]models.Component, error)
 	GetDevicesByLocationID(id string) ([]models.Device, error)
 	GetLocationsDevicesUsers(context context.Context, page int, limit int, term string) (map[string]interface{}, error)
 	DeleteLocation(ctx context.Context, id string) error
@@ -61,14 +61,14 @@ func (s *DefaultLocationService) GetAllLocations(ctx context.Context, page int, 
 	return response, nil
 }
 
-// service to get sensors of a location
-func (s *DefaultLocationService) GetsensorsByLocationID(locationID string) ([]models.Sensor, error) {
-	sensors, err := s.dao.GetsensorsByLocationID(locationID)
+// service to get components of a location
+func (s *DefaultLocationService) GetComponentsByLocationID(locationID string) ([]models.Component, error) {
+	components, err := s.dao.GetComponentsByLocationID(locationID)
 	if err != nil {
 		return nil, err
 	}
 
-	return sensors, nil
+	return components, nil
 }
 
 // service to get devices of a location

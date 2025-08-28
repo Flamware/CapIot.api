@@ -30,8 +30,8 @@ func SetupAdminRoutes(r *mux.Router,
 		w.Write([]byte("Admin access granted"))
 	}).Methods(http.MethodGet)
 
-	// Define the handler for the /admin/devices-sensors-locations route
-	adminRouter.HandleFunc("/devices-sensors-locations", adminHandler.GetDevicesSensorsLocations).Methods(http.MethodGet)
+	// Define the handler for the /admin/devices-components-locations route
+	adminRouter.HandleFunc("/devices-components-locations", adminHandler.GetDevicescomponentsLocations).Methods(http.MethodGet)
 
 	// Define the handler for the /admin/devices route
 	adminRouter.HandleFunc("/users-locations", adminHandler.GetUsersLocations).Methods(http.MethodGet)
@@ -63,7 +63,9 @@ func SetupAdminRoutes(r *mux.Router,
 	// Define the handler for starting monitoring for a device
 	adminRouter.HandleFunc("/devices/{deviceID}", mqttHandler.SetStatus).Methods(http.MethodPatch)
 
-	// Define the handler for updating range of a device's sensor
-	adminRouter.HandleFunc("/devices/{deviceID}/sensors/{SensorID}/range", deviceHandler.UpdatesensorRange).Methods(http.MethodPut)
+	// Define the handler for updating range of a device's component
+	adminRouter.HandleFunc("/devices/{deviceID}/components/{ComponentID}/range", deviceHandler.UpdatecomponentRange).Methods(http.MethodPut)
 
+	//Define the handler for reseting the timer of a device's component
+	adminRouter.HandleFunc("/devices/{deviceID}/components/{ComponentID}/timer/reset", mqttHandler.ResetTimer).Methods(http.MethodGet)
 }

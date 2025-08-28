@@ -28,8 +28,8 @@ func NewAdminHandler(authService *service.DefaultAuthService, userService *servi
 	}
 }
 
-func (h *AdminHandler) GetDevicesSensorsLocations(writer http.ResponseWriter, request *http.Request) {
-	log.Printf("Received %s request for devices, sensors, and locations", request.Method)
+func (h *AdminHandler) GetDevicescomponentsLocations(writer http.ResponseWriter, request *http.Request) {
+	log.Printf("Received %s request for devices, components, and locations", request.Method)
 
 	if request.Method != http.MethodGet {
 		log.Printf("Method %s not allowed...", request.Method)
@@ -60,7 +60,7 @@ func (h *AdminHandler) GetDevicesSensorsLocations(writer http.ResponseWriter, re
 	searchTerm := request.URL.Query().Get("search")
 
 	// Call AuthService with pagination and search parameters
-	devicesWithPagination, err := h.deviceService.GetDevicesSensorsLocations(request.Context(), page, limit, searchTerm)
+	devicesWithPagination, err := h.deviceService.GetDevicescomponentsLocations(request.Context(), page, limit, searchTerm)
 	if err != nil {
 		log.Printf("Failed to get data with pagination and search: %v", err)
 		http.Error(writer, "Failed to retrieve data", http.StatusInternalServerError)

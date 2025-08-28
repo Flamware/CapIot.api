@@ -1,7 +1,6 @@
 package repository
 
 import (
-	"CapIot-api/internal/dao"
 	"CapIot-api/internal/models"
 	"context"
 	"database/sql"
@@ -15,7 +14,7 @@ type PostgresLocationRepository struct {
 }
 
 // NewPostgresLocationRepository creates a new PostgresLocationRepository.
-func NewPostgresLocationRepository(db *sql.DB) dao.LocationDAO {
+func NewPostgresLocationRepository(db *sql.DB) *PostgresLocationRepository {
 	return &PostgresLocationRepository{db: db}
 }
 
@@ -113,47 +112,47 @@ func (r *PostgresLocationRepository) GetLocationByID(id string) (models.Location
 	return location, nil
 }
 
-// GetsensorsByLocationID retrieves sensors associated with a location ID.
-func (r *PostgresLocationRepository) GetsensorsByLocationID(locationID string) ([]models.Sensor, error) {
+// GetComponentsByLocationID retrieves components associated with a location ID.
+func (r *PostgresLocationRepository) GetComponentsByLocationID(locationID string) ([]models.Component, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	query := `SELECT
-       c.sensor_id,
-       c.sensor_type
-    FROM sensors c
-    JOIN device_sensors dc ON c.sensor_id = dc.sensor_id
+       c.component_id,
+       c.component_type
+    FROM components c
+    JOIN device_components dc ON c.component_id = dc.component_id
     JOIN device_location dl ON dc.device_id = dl.device_id
     WHERE dl.location_id = $1 `
 
 	rows, err := r.db.QueryContext(ctx, query, locationID)
 	if err != nil {
-		log.Printf("Error getting sensors by location ID: %v\n", err)
-		return []models.Sensor{}, err
+		log.Printf("Error getting components by location ID: %v\n", err)
+		return []models.Component{}, err
 	}
 	defer rows.Close()
 
-	sensors := []models.Sensor{} // Initialize as an empty slice
+	components := []models.Component{} // Initialize as an empty slice
 
 	for rows.Next() {
-		var sensor models.Sensor
+		var component models.Component
 
 		if err := rows.Scan(
-			&sensor.SensorID,
-			&sensor.SensorType,
+			&component.ComponentID,
+			&component.ComponentID,
 		); err != nil {
-			log.Printf("Error scanning sensor row: %v\n", err)
-			return []models.Sensor{}, err
+			log.Printf("Error scanning component row: %v\n", err)
+			return []models.Component{}, err
 		}
-		sensors = append(sensors, sensor)
+		components = append(components, component)
 	}
 
 	if err := rows.Err(); err != nil {
-		log.Printf("Error iterating sensor rows: %v\n", err)
-		return []models.Sensor{}, err
+		log.Printf("Error iterating component rows: %v\n", err)
+		return []models.Component{}, err
 	}
 
-	return sensors, nil
+	return components, nil
 }
 
 // GetDevicesByLocationID retrieves devices associated with a location ID.
@@ -255,7 +254,7 @@ func (r *PostgresLocationRepository) GetLocationsDevicesUsers(ctx context.Contex
 					Name:        locationName,        // Assign pointer to string
 					Description: locationDescription, // Assign pointer to string
 				},
-				Devices: []*models.DeviceWithsensors{}, // Initialize with the correct type
+				Devices: []*models.DeviceWithComponents{}, // Initialize with the correct type
 				Users:   []*models.User{},
 			}
 		}
@@ -263,13 +262,13 @@ func (r *PostgresLocationRepository) GetLocationsDevicesUsers(ctx context.Contex
 		location := locationsMap[*locationID]
 
 		if deviceID != nil {
-			location.Devices = append(location.Devices, &models.DeviceWithsensors{ // Use the correct struct
+			location.Devices = append(location.Devices, &models.DeviceWithComponents{ // Use the correct struct
 				Device: &models.Device{
 					DeviceID: *deviceID,       // Assign pointer to int
 					Status:   *deviceStatus,   // Assign pointer to string
 					LastSeen: *deviceLastSeen, // Assign pointer to time.Time
 				},
-				// sensors field will be nil as it's not fetched in this query
+				// components field will be nil as it's not fetched in this query
 			})
 		}
 

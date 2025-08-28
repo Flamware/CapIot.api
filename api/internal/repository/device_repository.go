@@ -6,37 +6,45 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time" // Added for time.Now()
 )
 
 // DeviceDAO defines the interface for all device and related data access operations.
 type DeviceDAO interface {
-	CreateDevice(device *models.Device) error
-	GetDeviceByDeviceID(deviceID string) (*models.Device, error)
-	UpdateDeviceLastSeenAndStatus(deviceID string) error
-	Createsensor(sensor *models.Sensor) (*models.Sensor, error)
-	GetsensorByID(id string) (*models.Sensor, error)
-	GetAllDevices() ([]*models.Device, error) // Ensure this
-	SetDeviceToLocation(ctx context.Context, id string, id2 int) error
-	InsertDevicesensor(sensor *models.Devicesensor) error
-	UpdateDeviceOperationalStatus(id string, status models.OperationalStatus) error
+	BeginTransaction() (*sql.Tx, error)
+
+	// Device Operations
+	CreateDevice(tx *sql.Tx, device *models.Device) error // Updated to take tx
+	DeviceExists(deviceID string) (bool, error)
 	GetDeviceByID(id string) (*models.Device, error)
-	GetsensorsByDeviceID(id string) ([]*models.Sensor, error)
+	UpdateDeviceLastSeenAndStatus(tx *sql.Tx, deviceID string, status models.OperationalStatus) error // Updated to take tx
+	UpdateDeviceOperationalStatus(tx *sql.Tx, id string, status models.OperationalStatus) error       // Updated to take tx
+	GetAllDevices() ([]*models.Device, error)
 	GetUnassignedDevices() ([]*models.Device, error)
-	DeleteDevice(id string) error
+	DeleteDevice(ctx context.Context, id string) error // Updated to take tx
 	GetLocationByDeviceID(id string) (*models.Location, error)
-	UnassignDeviceFromLocation(id string) error
-	FindAllWithSensorsAndLocations(ctx context.Context, limit int, offset int, search string) ([]*models.DeviceWithSensorsAndLocation, error)
+	UnassignDeviceFromLocation(tx *sql.Tx, id string) error // Updated to take tx
+	FindAllWithcomponentsAndLocations(ctx context.Context, limit int, offset int, search string) ([]*models.DeviceWithComponentsAndLocation, error)
 	CountAll(ctx context.Context, search string) (int, error)
-	Updatesensor(sensor *models.Sensor) error
-	UpdatesensorRange(sensor *models.Sensor) error
-	HandleDeviceAlert(SensorID string, message string) error
-	GetSensorLogsBySensorID(id string) ([]*models.SensorLog, error)
-	GetSensorLogsByDeviceIDAndSensorID(id string, id2 string) ([]*models.SensorLog, error)
-	GetDeviceLogsByDeviceID(id string) ([]*models.SensorLog, error)
-	GetAllLogsByUser(userId int) ([]*models.SensorLog, error)
-	UserHasAccessToSensor(id int, id2 string) (bool, error)
-	MarkSensorLogsAsRead(id string, logIds []int) error
-	MarkAllLogsAsRead(id int) error
+	SetDeviceToLocation(ctx context.Context, id string, id2 int) error
+
+	// Component Operations
+	CreateComponent(tx *sql.Tx, component *models.Component) (*models.Component, error) // Updated to take tx
+	GetComponentByID(id string) (*models.Component, error)
+	LinkComponentToDevice(tx *sql.Tx, deviceID string, componentID string) error // Updated to take tx
+	UpdateComponentRange(tx *sql.Tx, component *models.Component) error          // Updated to take tx
+	UpdateComponentStatus(tx *sql.Tx, id string, status string) error            // Updated to take tx
+	GetcomponentsByDeviceID(id string) ([]*models.Component, error)
+
+	// Log Operations
+	HandleDeviceAlert(tx *sql.Tx, componentID string, message string) error // Updated to take tx
+	GetcomponentLogsByComponentID(id string) ([]*models.ComponentLog, error)
+	GetcomponentLogsByDeviceIDAndComponentID(deviceID string, ComponentID string) ([]*models.ComponentLog, error)
+	GetDeviceLogsByDeviceID(deviceID string) ([]*models.ComponentLog, error)
+	GetAllLogsByUser(userID int) ([]*models.ComponentLog, error)
+	UserHasAccessTocomponent(userID int, ComponentID string) (bool, error)
+	MarkcomponentLogsAsRead(tx *sql.Tx, ComponentID string, logIds []int) error // Updated to take tx
+	MarkAllLogsAsRead(tx *sql.Tx, userID int) error                             // Updated to take tx
 }
 
 // PostgresDeviceDAO implements the DeviceDAO interface using PostgreSQL.
@@ -49,182 +57,114 @@ func NewPostgresDeviceDAO(db *sql.DB) *PostgresDeviceDAO {
 	return &PostgresDeviceDAO{db: db}
 }
 
-// Implementations for Device operations
-func (d *PostgresDeviceDAO) InsertDevice(device *models.Device) error {
-	_, err := d.db.Exec("INSERT INTO devices (device_id, last_seen, status, created_at) VALUES ($1, NOW(), $2, NOW())", device.DeviceID, device.Status)
-	return err
+// getExecutor returns either the transaction or the database connection for execution.
+func (d *PostgresDeviceDAO) getExecutor(tx *sql.Tx) interface {
+	Exec(query string, args ...interface{}) (sql.Result, error)
+	Query(query string, args ...interface{}) (*sql.Rows, error)
+	QueryRow(query string, args ...interface{}) *sql.Row
+} {
+	if tx != nil {
+		return tx
+	}
+	return d.db
 }
 
-// GetAllDevices retrieves all device records from the database
-func (d *PostgresDeviceDAO) GetAllDevices() ([]*models.Device, error) { // Changed return type to []*models.Device
-	rows, err := d.db.Query("SELECT device_id, last_seen, status, created_at FROM devices")
+// BeginTransaction starts a new database transaction.
+func (d *PostgresDeviceDAO) BeginTransaction() (*sql.Tx, error) {
+	return d.db.Begin()
+}
+
+// CreateDevice creates a new device record within a transaction.
+func (d *PostgresDeviceDAO) CreateDevice(tx *sql.Tx, device *models.Device) error {
+	executor := d.getExecutor(tx)
+	query := `
+		INSERT INTO public.devices (device_id, last_seen, status, created_at)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (device_id) DO NOTHING` // Using DO NOTHING for idempotency
+	_, err := executor.Exec(query, device.DeviceID, device.LastSeen, device.Status, device.CreatedAt)
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("failed to create device: %w", err)
 	}
-	defer rows.Close()
-
-	var devices []*models.Device // Changed to slice of pointers
-	for rows.Next() {
-		var dev models.Device
-		if err := rows.Scan(&dev.DeviceID, &dev.LastSeen, &dev.Status, &dev.CreatedAt); err != nil {
-			return nil, err
-		}
-		devices = append(devices, &dev) // Append a pointer to the device
-	}
-	return devices, nil
+	return nil
 }
 
-func (d *PostgresDeviceDAO) GetDeviceByDeviceID(id string) (*models.Device, error) {
-	row := d.db.QueryRow("SELECT device_id, last_seen, status, created_at FROM devices WHERE device_id = $1", id)
-	var device models.Device
-	err := row.Scan(&device.DeviceID, &device.LastSeen, &device.Status, &device.CreatedAt)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return &device, nil
-}
-
-func (d *PostgresDeviceDAO) UpdateDeviceLastSeenAndStatus(deviceID string) error {
-	_, err := d.db.Exec("UPDATE devices SET last_seen = NOW(), status = $1 WHERE device_id = $2", "stopped", deviceID) // Assuming status becomes online on availability
-	return err
-}
-
+// DeviceExists checks if a device with the given ID exists.
 func (d *PostgresDeviceDAO) DeviceExists(deviceID string) (bool, error) {
 	var exists bool
-	err := d.db.QueryRow("SELECT EXISTS(SELECT 1 FROM devices WHERE device_id = $1)", deviceID).Scan(&exists)
-	return exists, err
-}
-
-func (d *PostgresDeviceDAO) IsDeviceAssigned(deviceID string) (bool, error) {
-	var assigned bool
-	err := d.db.QueryRow("SELECT EXISTS(SELECT 1 FROM device_location WHERE device_id = $1 AND is_current = true)", deviceID).Scan(&assigned)
-	return assigned, err
-}
-
-func (d *PostgresDeviceDAO) SetDeviceToLocation(ctx context.Context, deviceID string, locationID int) error {
-	_, err := d.db.ExecContext(ctx, "INSERT INTO device_location (device_id, location_id, assigned_at, is_current) VALUES ($1, $2, NOW(), true)", deviceID, locationID)
+	query := "SELECT EXISTS(SELECT 1 FROM public.devices WHERE device_id = $1)"
+	err := d.db.QueryRow(query, deviceID).Scan(&exists)
 	if err != nil {
-		// Log the error with context. This is crucial for debugging.
-		fmt.Printf("Error setting device '%s' to location '%d': %v\n", deviceID, locationID, err)
-		// Return the error. The calling service layer will decide what to do with it.
-		return fmt.Errorf("failed to set device '%s' to location '%d': %w", deviceID, locationID, err)
+		return false, fmt.Errorf("error checking if device exists: %w", err)
 	}
-	return nil // Return nil to indicate success
-}
-func (d *PostgresDeviceDAO) Insertsensor(sensor *models.Sensor) (*models.Sensor, error) {
-	err := d.db.QueryRow("INSERT INTO sensors (sensor_type, sensor_type) VALUES ($1, $2) RETURNING sensor_id", sensor.SensorType).Scan(&sensor.SensorID)
-	if err != nil {
-		return nil, err
-	}
-	return sensor, nil
+	return exists, nil
 }
 
-// Implementations for Devicesensor operations
-func (d *PostgresDeviceDAO) InsertDevicesensor(dc *models.Devicesensor) error {
-	_, err := d.db.Exec("INSERT INTO public.device_sensors (device_id, sensor_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", dc.DeviceID, dc.SensorID)
-	return err
-}
-
-// GetsensorByID retrieves a sensor record by its ID (string)
-func (d *PostgresDeviceDAO) GetsensorByID(id string) (*models.Sensor, error) {
-	stmt := `
-       SELECT sensor_id, sensor_type, min_threshold, max_threshold
-       FROM sensors
-       WHERE sensor_id = $1
-    `
-	row := d.db.QueryRow(stmt, id)
-	var sensor models.Sensor
-	err := row.Scan(&sensor.SensorID, &sensor.SensorType, &sensor.MinThreshold, &sensor.MaxThreshold)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return &sensor, nil
-}
-
-func (d *PostgresDeviceDAO) Createsensor(sensor *models.Sensor) (*models.Sensor, error) {
-	stmt := `
-		INSERT INTO sensors (sensor_id, sensor_type)
-		VALUES ($1, $2)
-		RETURNING sensor_id
-	`
-	err := d.db.QueryRow(stmt, sensor.SensorID, sensor.SensorType).Scan(&sensor.SensorID)
-	if err != nil {
-		return nil, err
-	}
-	return sensor, nil
-}
-func (d *PostgresDeviceDAO) CreateDevice(device *models.Device) error {
-	_, err := d.db.Exec(
-		"INSERT INTO devices (device_id, last_seen, status, created_at) VALUES ($1, $2, $3, $4)",
-		device.DeviceID,
-		device.LastSeen,
-		device.Status,
-		device.CreatedAt,
-	)
-	return err
-}
-
-func (d *PostgresDeviceDAO) UpdateDeviceOperationalStatus(id string, status models.OperationalStatus) error {
-	_, err := d.db.Exec("UPDATE devices SET status = $1 WHERE device_id = $2", status, id)
-	return err
-}
-
+// GetDeviceByID retrieves a device record by its ID.
 func (d *PostgresDeviceDAO) GetDeviceByID(id string) (*models.Device, error) {
 	row := d.db.QueryRow("SELECT device_id, last_seen, status, created_at FROM devices WHERE device_id = $1", id)
 	var device models.Device
 	err := row.Scan(&device.DeviceID, &device.LastSeen, &device.Status, &device.CreatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return &models.Device{}, nil // Return a pointer to an empty Device struct
+			return nil, sql.ErrNoRows
 		}
-		return nil, err
+		return nil, fmt.Errorf("error scanning device with ID %s: %w", id, err)
 	}
 	return &device, nil
 }
 
-func (d *PostgresDeviceDAO) GetsensorsByDeviceID(id string) ([]*models.Sensor, error) {
-	rows, err := d.db.Query(`
-        SELECT c.sensor_id, c.sensor_type, c.min_threshold, c.max_threshold
-        FROM device_sensors dc
-        JOIN sensors c ON dc.sensor_id = c.sensor_id
-        WHERE dc.device_id = $1
-    `, id)
+// UpdateDeviceLastSeenAndStatus updates the last seen timestamp and status of a device within a transaction.
+func (d *PostgresDeviceDAO) UpdateDeviceLastSeenAndStatus(tx *sql.Tx, deviceID string, status models.OperationalStatus) error {
+	executor := d.getExecutor(tx)
+	_, err := executor.Exec("UPDATE devices SET status = $1, last_seen = NOW() WHERE device_id = $2", status, deviceID)
 	if err != nil {
-		return []*models.Sensor{}, err
+		return fmt.Errorf("failed to update device last seen and status: %w", err)
+	}
+	return nil
+}
+
+// UpdateDeviceOperationalStatus updates the operational status of a device within a transaction.
+func (d *PostgresDeviceDAO) UpdateDeviceOperationalStatus(tx *sql.Tx, id string, status models.OperationalStatus) error {
+	executor := d.getExecutor(tx)
+	_, err := executor.Exec("UPDATE devices SET status = $1 WHERE device_id = $2", status, id)
+	if err != nil {
+		return fmt.Errorf("failed to update device operational status: %w", err)
+	}
+	return nil
+}
+
+// GetAllDevices retrieves all device records from the database.
+func (d *PostgresDeviceDAO) GetAllDevices() ([]*models.Device, error) {
+	rows, err := d.db.Query("SELECT device_id, last_seen, status, created_at FROM devices")
+	if err != nil {
+		return nil, fmt.Errorf("failed to query all devices: %w", err)
 	}
 	defer rows.Close()
 
-	var sensors []*models.Sensor
+	var devices []*models.Device
 	for rows.Next() {
-		var sensor models.Sensor
-		if err := rows.Scan(&sensor.SensorID, &sensor.SensorType, &sensor.MinThreshold, &sensor.MaxThreshold); err != nil {
-			return []*models.Sensor{}, err
+		var dev models.Device
+		if err := rows.Scan(&dev.DeviceID, &dev.LastSeen, &dev.Status, &dev.CreatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan device row: %w", err)
 		}
-		sensors = append(sensors, &sensor)
+		devices = append(devices, &dev)
 	}
-
 	if err := rows.Err(); err != nil {
-		return []*models.Sensor{}, err
+		return nil, fmt.Errorf("error during device rows iteration: %w", err)
 	}
-
-	return sensors, nil
+	return devices, nil
 }
 
+// GetUnassignedDevices retrieves devices that are not assigned to any location.
 func (d *PostgresDeviceDAO) GetUnassignedDevices() ([]*models.Device, error) {
 	rows, err := d.db.Query(`
        SELECT d.device_id, d.last_seen, d.status, d.created_at
        FROM devices d
-       LEFT JOIN device_location dl ON d.device_id = dl.device_id
+       LEFT JOIN device_location dl ON d.device_id = dl.device_id AND dl.is_current = true
        WHERE dl.device_id IS NULL
     `)
 	if err != nil {
-		return []*models.Device{}, err // Return empty slice on query error
+		return nil, fmt.Errorf("failed to query unassigned devices: %w", err)
 	}
 	defer rows.Close()
 
@@ -232,48 +172,95 @@ func (d *PostgresDeviceDAO) GetUnassignedDevices() ([]*models.Device, error) {
 	for rows.Next() {
 		var device models.Device
 		if err := rows.Scan(&device.DeviceID, &device.LastSeen, &device.Status, &device.CreatedAt); err != nil {
-			return []*models.Device{}, err // Return empty slice on scan error
+			return nil, fmt.Errorf("failed to scan unassigned device row: %w", err)
 		}
 		devices = append(devices, &device)
 	}
-
 	if err := rows.Err(); err != nil {
-		return []*models.Device{}, err // Return empty slice on rows.Err()
+		return nil, fmt.Errorf("error during unassigned device rows iteration: %w", err)
+	}
+	return devices, nil
+}
+
+// DeleteDevice deletes a device by its ID within a transaction.
+func (d *PostgresDeviceDAO) DeleteDevice(context context.Context, id string) error {
+	executor := d.getExecutor(context.Value("tx").(*sql.Tx)) // Assuming tx is passed via context
+	if executor == nil {
+		executor = d.db
+	}
+	_, err := executor.Exec("DELETE FROM devices WHERE device_id = $1", id)
+	if err != nil {
+		return fmt.Errorf("failed to delete device %s: %w", id, err)
+	}
+	return nil
+}
+
+// UnassignDeviceFromLocation unassigns a device from its current location within a transaction.
+func (d *PostgresDeviceDAO) UnassignDeviceFromLocation(tx *sql.Tx, id string) error {
+	executor := d.getExecutor(tx)
+	_, err := executor.Exec("UPDATE device_location SET is_current = false WHERE device_id = $1", id)
+	if err != nil {
+		return fmt.Errorf("failed to unassign device %s from location: %w", id, err)
+	}
+	return nil
+}
+
+// SetDeviceToLocation assigns a device to a location within a transaction.
+func (d *PostgresDeviceDAO) SetDeviceToLocation(ctx context.Context, deviceID string, locationID int) error {
+	tx, ok := ctx.Value("tx").(*sql.Tx)
+	if !ok || tx == nil {
+		return fmt.Errorf("transaction not found in context")
+	}
+	executor := d.getExecutor(tx)
+
+	// First, mark any existing assignments for this device as not current
+	updateQuery := `
+		UPDATE public.device_location
+		SET is_current = FALSE
+		WHERE device_id = $1 AND is_current = TRUE
+	`
+	_, err := executor.Exec(updateQuery, deviceID)
+	if err != nil {
+		return fmt.Errorf("failed to mark old device location as not current: %w", err)
 	}
 
-	return devices, nil // Return the (potentially empty) slice of devices
+	// Then, insert the new assignment or update an existing one to be current
+	insertQuery := `
+		INSERT INTO public.device_location (device_id, location_id, assignment_date, is_current)
+		VALUES ($1, $2, $3, TRUE)
+		ON CONFLICT (device_id, location_id) DO UPDATE
+		SET assignment_date = $3, is_current = TRUE
+	`
+	_, err = executor.Exec(insertQuery, deviceID, locationID, time.Now())
+	if err != nil {
+		return fmt.Errorf("failed to set device %s to location %d: %w", deviceID, locationID, err)
+	}
+	return nil
 }
 
-func (d *PostgresDeviceDAO) DeleteDevice(id string) error {
-	_, err := d.db.Exec("DELETE FROM devices WHERE device_id = $1", id)
-	return err
-}
-
-func (d *PostgresDeviceDAO) UnassignDeviceFromLocation(id string) error {
-	_, err := d.db.Exec("UPDATE device_location SET is_current = false WHERE device_id = $1", id)
-	return err
-}
-
+// GetLocationByDeviceID retrieves the location associated with a device ID.
 func (d *PostgresDeviceDAO) GetLocationByDeviceID(id string) (*models.Location, error) {
 	stmt := `
-		SELECT l.location_id, l.location_name
-		FROM device_location dl
-		JOIN locations l ON dl.location_id = l.location_id
-		WHERE dl.device_id = $1 AND dl.is_current = true
-	`
+       SELECT l.location_id, l.location_name
+       FROM device_location dl
+       JOIN locations l ON dl.location_id = l.location_id
+       WHERE dl.device_id = $1 AND dl.is_current = true
+    `
 	row := d.db.QueryRow(stmt, id)
 	var location models.Location
 	err := row.Scan(&location.ID, &location.Name)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, nil // No location found for this device
+			return nil, sql.ErrNoRows
 		}
-		return nil, err
+		return nil, fmt.Errorf("error scanning location for device %s: %w", id, err)
 	}
 	return &location, nil
 }
-func (d *PostgresDeviceDAO) FindAllWithSensorsAndLocations(ctx context.Context, limit int, offset int, search string) ([]*models.DeviceWithSensorsAndLocation, error) {
-	var devicesWithInfo []*models.DeviceWithSensorsAndLocation
+
+// FindAllWithcomponentsAndLocations retrieves devices with their components and locations.
+func (d *PostgresDeviceDAO) FindAllWithcomponentsAndLocations(ctx context.Context, limit int, offset int, search string) ([]*models.DeviceWithComponentsAndLocation, error) {
+	var devicesWithInfo []*models.DeviceWithComponentsAndLocation
 	var query strings.Builder
 	args := []interface{}{limit, offset}
 	argCount := 3
@@ -293,9 +280,9 @@ func (d *PostgresDeviceDAO) FindAllWithSensorsAndLocations(ctx context.Context, 
              LOWER(d.device_id) LIKE LOWER('%' || $` + fmt.Sprintf("%d", argCount) + ` || '%') OR
              EXISTS (
                 SELECT 1
-                FROM device_sensors dc
-                JOIN sensors c ON dc.sensor_id = c.sensor_id
-                WHERE dc.device_id = d.device_id AND LOWER(c.sensor_type) LIKE LOWER('%' || $` + fmt.Sprintf("%d", argCount) + ` || '%')
+                FROM device_components dc
+                JOIN components c ON dc.component_id = c.component_id
+                WHERE dc.device_id = d.device_id AND LOWER(c.component_type) LIKE LOWER('%' || $` + fmt.Sprintf("%d", argCount) + ` || '%')
              ) OR
              LOWER(l.location_name) LIKE LOWER('%' || $` + fmt.Sprintf("%d", argCount) + ` || '%')
        `)
@@ -310,56 +297,67 @@ func (d *PostgresDeviceDAO) FindAllWithSensorsAndLocations(ctx context.Context, 
 
 	rows, err := d.db.QueryContext(ctx, query.String(), args...)
 	if err != nil {
-		return nil, fmt.Errorf("query failed: %w", err)
+		return nil, fmt.Errorf("query for devices with components and locations failed: %w", err)
 	}
 	defer rows.Close()
 
-	deviceMap := make(map[string]*models.DeviceWithSensorsAndLocation)
+	deviceMap := make(map[string]*models.DeviceWithComponentsAndLocation)
 
 	for rows.Next() {
-		var deviceWithInfo models.DeviceWithSensorsAndLocation
+		var deviceWithInfo models.DeviceWithComponentsAndLocation
 		var location models.Location
-		var device models.Device // Still need to scan into a Device struct
+		var device models.Device
+		var locationID sql.NullInt64    // Use NullInt32 for nullable location_id
+		var locationName sql.NullString // Use NullString for nullable location_name
+
 		if err := rows.Scan(
 			&device.DeviceID, &device.LastSeen, &device.Status, &device.CreatedAt,
-			&location.ID, &location.Name,
+			&locationID, &locationName,
 		); err != nil {
-			return nil, fmt.Errorf("scan failed: %w", err)
+			return nil, fmt.Errorf("scan for device with components and locations failed: %w", err)
 		}
 
-		deviceWithsensors := &models.DeviceWithsensors{
-			Device: &device,
-		}
-
-		if existingDevice, ok := deviceMap[device.DeviceID]; ok {
-			existingDevice.Location = &location
-		} else {
-			deviceWithInfo.DeviceWithsensors = deviceWithsensors // Assign DeviceWithsensors
+		// Assign location only if valid
+		if locationID.Valid {
+			valID := int(locationID.Int64)
+			location.ID = &valID // Assign the address of the local variable
+			location.Name = &locationName.String
 			deviceWithInfo.Location = &location
-			ptr := &deviceWithInfo
-			deviceMap[device.DeviceID] = ptr
-			devicesWithInfo = append(devicesWithInfo, ptr)
 		}
-	}
 
-	if err := rows.Err(); err != nil { // Check for errors during row iteration
-		return nil, fmt.Errorf("error during row iteration: %w", err)
-	}
-
-	// Fetch sensors for each device
-	for _, deviceInfo := range devicesWithInfo {
-		if deviceInfo.DeviceWithsensors != nil && deviceInfo.DeviceWithsensors.Device != nil {
-			sensors, err := d.GetsensorsByDeviceID(deviceInfo.DeviceWithsensors.Device.DeviceID)
-			if err != nil {
-				return nil, fmt.Errorf("failed to get sensors for device %s: %w", deviceInfo.DeviceWithsensors.Device.DeviceID, err)
+		// Check if device already exists in map (for aggregation if needed, though this query structure won't create duplicates for devices)
+		if existingDevice, ok := deviceMap[device.DeviceID]; ok {
+			// This branch might not be strictly necessary with this specific query,
+			// but it's good practice for more complex aggregations.
+			existingDevice.Location = deviceWithInfo.Location // Update location if needed
+		} else {
+			deviceWithInfo.DeviceWithComponents = &models.DeviceWithComponents{ // Initialize inner struct
+				Device: &device,
 			}
-			deviceInfo.DeviceWithsensors.Sensors = sensors // Assign sensors to DeviceWithsensors
+			deviceMap[device.DeviceID] = &deviceWithInfo
+			devicesWithInfo = append(devicesWithInfo, &deviceWithInfo)
 		}
 	}
 
-	return devicesWithInfo, nil // Will return an empty slice if no devices were found
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error during device with components and locations rows iteration: %w", err)
+	}
+
+	// Fetch components for each device (separate query for simplicity and to avoid large joins)
+	for _, deviceInfo := range devicesWithInfo {
+		if deviceInfo.DeviceWithComponents != nil && deviceInfo.DeviceWithComponents.Device != nil {
+			components, err := d.GetcomponentsByDeviceID(deviceInfo.DeviceWithComponents.Device.DeviceID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get components for device %s: %w", deviceInfo.DeviceWithComponents.Device.DeviceID, err)
+			}
+			deviceInfo.DeviceWithComponents.Components = components
+		}
+	}
+
+	return devicesWithInfo, nil
 }
 
+// CountAll counts total devices based on search criteria.
 func (d *PostgresDeviceDAO) CountAll(ctx context.Context, search string) (int, error) {
 	var count int
 	var query strings.Builder
@@ -370,21 +368,21 @@ func (d *PostgresDeviceDAO) CountAll(ctx context.Context, search string) (int, e
 
 	if search != "" {
 		query.WriteString(`
-			WHERE
-				LOWER(d.device_id) LIKE LOWER('%' || $` + fmt.Sprintf("%d", argCount) + ` || '%') OR
-				EXISTS (
-					SELECT 1
-					FROM device_sensors dc
-					JOIN sensors c ON dc.sensor_id = c.sensor_id
-					WHERE dc.device_id = d.device_id AND LOWER(c.sensor_type) LIKE LOWER('%' || $` + fmt.Sprintf("%d", argCount) + ` || '%')
-				) OR
-				EXISTS (
-					SELECT 1
-					FROM device_location dl
-					JOIN locations l ON dl.location_id = l.location_id
-					WHERE dl.device_id = d.device_id AND dl.is_current = true AND LOWER(l.location_name) LIKE LOWER('%' || $` + fmt.Sprintf("%d", argCount) + ` || '%')
-				)
-		`)
+          WHERE
+             LOWER(d.device_id) LIKE LOWER('%' || $` + fmt.Sprintf("%d", argCount) + ` || '%') OR
+             EXISTS (
+                SELECT 1
+                FROM device_components dc
+                JOIN components c ON dc.component_id = c.component_id
+                WHERE dc.device_id = d.device_id AND LOWER(c.component_type) LIKE LOWER('%' || $` + fmt.Sprintf("%d", argCount) + ` || '%')
+             ) OR
+             EXISTS (
+                SELECT 1
+                FROM device_location dl
+                JOIN locations l ON dl.location_id = l.location_id
+                WHERE dl.device_id = d.device_id AND dl.is_current = true AND LOWER(l.location_name) LIKE LOWER('%' || $` + fmt.Sprintf("%d", argCount) + ` || '%')
+             )
+       `)
 		args = append(args, search)
 		argCount++
 	}
@@ -396,149 +394,311 @@ func (d *PostgresDeviceDAO) CountAll(ctx context.Context, search string) (int, e
 	return count, nil
 }
 
-func (d *PostgresDeviceDAO) Updatesensor(sensor *models.Sensor) error {
-	_, err := d.db.Exec("UPDATE sensors SET sensor_type = $1 WHERE sensor_id = $2", sensor.SensorType, sensor.SensorID)
-	if err != nil {
-		return fmt.Errorf("failed to update sensor: %w", err)
-	}
-	return nil
-}
+// --- Component Operations ---
 
-func (d *PostgresDeviceDAO) UpdatesensorRange(sensor *models.Sensor) error {
-	_, err := d.db.Exec("UPDATE sensors SET min_threshold = $1, max_threshold = $2 WHERE sensor_id = $3", sensor.MinThreshold, sensor.MaxThreshold, sensor.SensorID)
-	if err != nil {
-		return fmt.Errorf("failed to update sensor range: %w", err)
+// CreateComponent creates a new component instance within a transaction.
+func (d *PostgresDeviceDAO) CreateComponent(tx *sql.Tx, component *models.Component) (*models.Component, error) {
+	executor := d.getExecutor(tx)
+	var minThreshold, maxThreshold sql.NullFloat64
+	if component.MinThreshold != nil {
+		minThreshold = sql.NullFloat64{Float64: *component.MinThreshold, Valid: true}
 	}
-	return nil
-}
+	var maxRunningHours sql.NullInt32
+	if component.MaxRunningHours != nil {
+		maxRunningHours = sql.NullInt32{Int32: *component.MaxRunningHours, Valid: true}
+	}
 
-func (d *PostgresDeviceDAO) HandleDeviceAlert(sensor_id string, message string) error {
-	stmt := `
-        INSERT INTO public.sensor_log (sensor_id, log_content, log_read)
-        VALUES ($1, $2, FALSE) -- You can explicitly set log_read to FALSE here
+	query := `
+        INSERT INTO public.components (
+            component_id, component_name, component_type, component_subtype,
+            component_status, min_threshold, max_threshold, max_running_hours
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        RETURNING component_id, component_name, component_type, component_subtype,
+                  component_status, min_threshold, max_threshold, max_running_hours
     `
-	// Execute the statement, passing the values as separate arguments to Exec
-	_, err := d.db.Exec(stmt, sensor_id, message)
+	err := executor.QueryRow(
+		query,
+		component.ComponentID,
+		component.ComponentName,
+		component.ComponentType,
+		component.ComponentSubtype,
+		component.ComponentStatus,
+		minThreshold,
+		maxThreshold,
+		maxRunningHours,
+	).Scan(
+		&component.ComponentID,
+		&component.ComponentName,
+		&component.ComponentType,
+		&component.ComponentSubtype,
+		&component.ComponentStatus,
+		&minThreshold,
+		&maxThreshold,
+		&maxRunningHours,
+	)
+
 	if err != nil {
-		// Wrap the error for more context in the logs
-		return fmt.Errorf("failed to insert alert log for sensor '%s': %w", sensor_id, err)
+		return nil, fmt.Errorf("failed to create component: %w", err)
+	}
+
+	if minThreshold.Valid {
+		component.MinThreshold = &minThreshold.Float64
+	} else {
+		component.MinThreshold = nil
+	}
+	if maxThreshold.Valid {
+		component.MaxThreshold = &maxThreshold.Float64
+	} else {
+		component.MaxThreshold = nil
+	}
+	if maxRunningHours.Valid {
+		component.MaxRunningHours = &maxRunningHours.Int32
+	} else {
+		component.MaxRunningHours = nil
+	}
+
+	return component, nil
+}
+
+// GetComponentByID retrieves a component record by its ID.
+func (d *PostgresDeviceDAO) GetComponentByID(id string) (*models.Component, error) {
+	stmt := `
+       SELECT component_id, component_name, component_type, component_subtype,
+              component_status, min_threshold, max_threshold, max_running_hours
+       FROM components
+       WHERE component_id = $1
+    `
+	row := d.db.QueryRow(stmt, id)
+	var component models.Component
+	var minThreshold, maxThreshold sql.NullFloat64
+	var maxRunningHours sql.NullInt32
+
+	err := row.Scan(
+		&component.ComponentID,
+		&component.ComponentName,
+		&component.ComponentType,
+		&component.ComponentSubtype,
+		&component.ComponentStatus,
+		&minThreshold,
+		&maxThreshold,
+		&maxRunningHours,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, sql.ErrNoRows
+		}
+		return nil, fmt.Errorf("error scanning component with ID %s: %w", id, err)
+	}
+
+	if minThreshold.Valid {
+		component.MinThreshold = &minThreshold.Float64
+	}
+	if maxThreshold.Valid {
+		component.MaxThreshold = &maxThreshold.Float64
+	}
+	if maxRunningHours.Valid {
+		component.MaxRunningHours = &maxRunningHours.Int32
+	}
+
+	return &component, nil
+}
+
+// LinkComponentToDevice links a component to a device within a transaction.
+func (d *PostgresDeviceDAO) LinkComponentToDevice(tx *sql.Tx, deviceID string, componentID string) error {
+	executor := d.getExecutor(tx)
+	query := `
+		INSERT INTO public.device_components (device_id, component_id, installation_date)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (device_id, component_id) DO UPDATE SET removal_date = NULL, installation_date = $3
+	` // ON CONFLICT ensures idempotency and handles re-installation
+	_, err := executor.Exec(query, deviceID, componentID, time.Now())
+	if err != nil {
+		return fmt.Errorf("failed to link component %s to device %s: %w", componentID, deviceID, err)
 	}
 	return nil
 }
 
-// Function to return the log content for a specific sensor
-func (d *PostgresDeviceDAO) GetSensorLog(sensorID string) ([]*models.SensorLog, error) {
-	rows, err := d.db.Query("SELECT log_id, sensor_id, log_content, log_read, created_at FROM sensor_log WHERE sensor_id = $1", sensorID)
+// UpdateComponentStatus updates the status of a component within a transaction.
+func (d *PostgresDeviceDAO) UpdateComponentStatus(tx *sql.Tx, id string, status string) error {
+	executor := d.getExecutor(tx)
+	_, err := executor.Exec("UPDATE components SET component_status = $1 WHERE component_id = $2", status, id)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query sensor logs: %w", err)
+		return fmt.Errorf("failed to update component status for %s: %w", id, err)
 	}
-	defer rows.Close()
-
-	var logs []*models.SensorLog
-	for rows.Next() {
-		var log models.SensorLog
-		if err := rows.Scan(&log.LogID, &log.SensorID, &log.Content, &log.Read, &log.Timestamp); err != nil {
-			return nil, fmt.Errorf("failed to scan sensor log: %w", err)
-		}
-		logs = append(logs, &log)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error during row iteration: %w", err)
-	}
-
-	return logs, nil
+	return nil
 }
 
-func (d *PostgresDeviceDAO) GetSensorLogsBySensorID(id string) ([]*models.SensorLog, error) {
-	rows, err := d.db.Query("SELECT sensor_id, log_timestamp, log_content, log_read, log_id FROM sensor_log WHERE sensor_id = $1", id)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query sensor logs: %w", err)
-	}
-	defer rows.Close()
-
-	var logs []*models.SensorLog
-	for rows.Next() {
-		var log models.SensorLog
-		if err := rows.Scan(&log.SensorID, &log.Timestamp, &log.Content, &log.Read, &log.LogID); err != nil {
-			return nil, fmt.Errorf("failed to scan sensor log: %w", err)
-		}
-		logs = append(logs, &log)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error during row iteration: %w", err)
-	}
-
-	return logs, nil
-}
-
-func (d *PostgresDeviceDAO) GetSensorLogsByDeviceIDAndSensorID(deviceID string, sensorID string) ([]*models.SensorLog, error) {
+// GetcomponentsByDeviceID retrieves all components linked to a specific device.
+func (d *PostgresDeviceDAO) GetcomponentsByDeviceID(id string) ([]*models.Component, error) {
 	rows, err := d.db.Query(`
-		SELECT sl.sensor_id, sl.log_timestamp, sl.log_content, sl.log_read, sl.log_id
-		FROM sensor_log sl
-		JOIN device_sensors ds ON sl.sensor_id = ds.sensor_id
-		WHERE ds.device_id = $1 AND ds.sensor_id = $2
-	`, deviceID, sensorID)
+        SELECT c.component_id, c.component_name, c.component_type, c.component_subtype,
+               c.component_status, c.min_threshold, c.max_threshold, c.max_running_hours
+        FROM public.components c
+        JOIN public.device_components dc ON c.component_id = dc.component_id
+        WHERE dc.device_id = $1 AND dc.removal_date IS NULL
+    `, id)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query sensor logs: %w", err)
+		return nil, fmt.Errorf("error querying components for device %s: %w", id, err)
 	}
 	defer rows.Close()
 
-	var logs []*models.SensorLog
+	var components []*models.Component
 	for rows.Next() {
-		var log models.SensorLog
-		if err := rows.Scan(&log.SensorID, &log.Timestamp, &log.Content, &log.Read, &log.LogID); err != nil {
-			return nil, fmt.Errorf("failed to scan sensor log: %w", err)
+		var component models.Component
+		var minThreshold, maxThreshold sql.NullFloat64
+		var maxRunningHours sql.NullInt32
+
+		err := rows.Scan(
+			&component.ComponentID,
+			&component.ComponentName,
+			&component.ComponentType,
+			&component.ComponentSubtype,
+			&component.ComponentStatus,
+			&minThreshold,
+			&maxThreshold,
+			&maxRunningHours,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("error scanning component row for device %s: %w", id, err)
 		}
-		logs = append(logs, &log)
+
+		if minThreshold.Valid {
+			component.MinThreshold = &minThreshold.Float64
+		}
+		if maxThreshold.Valid {
+			component.MaxThreshold = &maxThreshold.Float64
+		}
+		if maxRunningHours.Valid {
+			component.MaxRunningHours = &maxRunningHours.Int32
+		}
+		components = append(components, &component)
 	}
 
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error during row iteration: %w", err)
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating component rows for device %s: %w", id, err)
 	}
 
-	return logs, nil
+	return components, nil
 }
 
-func (d *PostgresDeviceDAO) GetDeviceLogsByDeviceID(deviceID string) ([]*models.SensorLog, error) {
-	rows, err := d.db.Query(`
-		SELECT sl.sensor_id, sl.log_timestamp, sl.log_content, sl.log_read, sl.log_id
-		FROM sensor_log sl
-		JOIN device_sensors ds ON sl.sensor_id = ds.sensor_id
-		WHERE ds.device_id = $1
-	`, deviceID)
+// UpdateComponentRange updates the operational range of a component within a transaction.
+func (d *PostgresDeviceDAO) UpdateComponentRange(tx *sql.Tx, component *models.Component) error {
+	executor := d.getExecutor(tx)
+	var minThreshold, maxThreshold sql.NullFloat64
+	if component.MinThreshold != nil {
+		minThreshold = sql.NullFloat64{Float64: *component.MinThreshold, Valid: true}
+	}
+	if component.MaxThreshold != nil {
+		maxThreshold = sql.NullFloat64{Float64: *component.MaxThreshold, Valid: true}
+	}
+
+	_, err := executor.Exec("UPDATE components SET min_threshold = $1, max_threshold = $2 WHERE component_id = $3", minThreshold, maxThreshold, component.ComponentID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query device logs: %w", err)
+		return fmt.Errorf("failed to update component range for %s: %w", component.ComponentID, err)
+	}
+	return nil
+}
+
+// --- Log Operations ---
+
+// HandleDeviceAlert inserts a new alert log for a component within a transaction.
+func (d *PostgresDeviceDAO) HandleDeviceAlert(tx *sql.Tx, componentID string, message string) error {
+	executor := d.getExecutor(tx)
+	stmt := `
+        INSERT INTO public.component_log (component_id, log_content, log_read)
+        VALUES ($1, $2, FALSE)
+    `
+	_, err := executor.Exec(stmt, componentID, message)
+	if err != nil {
+		return fmt.Errorf("failed to insert alert log for component '%s': %w", componentID, err)
+	}
+	return nil
+}
+
+// GetcomponentLogsByComponentID retrieves all logs for a specific component.
+func (d *PostgresDeviceDAO) GetcomponentLogsByComponentID(id string) ([]*models.ComponentLog, error) {
+	rows, err := d.db.Query("SELECT log_id, component_id, log_timestamp, log_content, log_read FROM component_log WHERE component_id = $1", id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query component logs by ID %s: %w", id, err)
 	}
 	defer rows.Close()
 
-	var logs []*models.SensorLog
+	var logs []*models.ComponentLog
 	for rows.Next() {
-		var log models.SensorLog
-		if err := rows.Scan(&log.SensorID, &log.Timestamp, &log.Content, &log.Read, &log.LogID); err != nil {
-			return nil, fmt.Errorf("failed to scan device log: %w", err)
+		var log models.ComponentLog
+		if err := rows.Scan(&log.LogID, &log.ComponentID, &log.Timestamp, &log.Content, &log.Read); err != nil {
+			return nil, fmt.Errorf("failed to scan component log row: %w", err)
 		}
 		logs = append(logs, &log)
 	}
-
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error during row iteration: %w", err)
+		return nil, fmt.Errorf("error during component log rows iteration: %w", err)
 	}
-
 	return logs, nil
 }
 
-func (d *PostgresDeviceDAO) GetAllLogsByUser(userID int) ([]*models.SensorLog, error) {
-	// The SQL query correctly joins sensor logs with device sensors, device locations,
-	// and user locations to ensure that only logs from devices located in
-	// locations assigned to the given user are returned.
+// GetcomponentLogsByDeviceIDAndComponentID retrieves component logs for a specific device and component.
+func (d *PostgresDeviceDAO) GetcomponentLogsByDeviceIDAndComponentID(deviceID string, ComponentID string) ([]*models.ComponentLog, error) {
 	rows, err := d.db.Query(`
-        SELECT sl.sensor_id, sl.log_timestamp, sl.log_content, sl.log_read, sl.log_id
-        FROM sensor_log sl
-        JOIN device_sensors ds ON sl.sensor_id = ds.sensor_id
-        JOIN device_location dl ON ds.device_id = dl.device_id
-        JOIN user_location ul ON ul.user_id = $1::INTEGER AND ul.location_id = dl.location_id
+       SELECT sl.log_id, sl.component_id, sl.log_timestamp, sl.log_content, sl.log_read
+       FROM component_log sl
+       JOIN device_components ds ON sl.component_id = ds.component_id
+       WHERE ds.device_id = $1 AND ds.component_id = $2
+    `, deviceID, ComponentID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query component logs by device and component ID: %w", err)
+	}
+	defer rows.Close()
+
+	var logs []*models.ComponentLog
+	for rows.Next() {
+		var log models.ComponentLog
+		if err := rows.Scan(&log.LogID, &log.ComponentID, &log.Timestamp, &log.Content, &log.Read); err != nil {
+			return nil, fmt.Errorf("failed to scan component log row by device and component ID: %w", err)
+		}
+		logs = append(logs, &log)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error during component log rows iteration by device and component ID: %w", err)
+	}
+	return logs, nil
+}
+
+// GetDeviceLogsByDeviceID retrieves all logs for a specific device.
+func (d *PostgresDeviceDAO) GetDeviceLogsByDeviceID(deviceID string) ([]*models.ComponentLog, error) {
+	rows, err := d.db.Query(`
+       SELECT sl.log_id, sl.component_id, sl.log_timestamp, sl.log_content, sl.log_read
+       FROM component_log sl
+       JOIN device_components ds ON sl.component_id = ds.component_id
+       WHERE ds.device_id = $1
+    `, deviceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query device logs by device ID: %w", err)
+	}
+	defer rows.Close()
+
+	var logs []*models.ComponentLog
+	for rows.Next() {
+		var log models.ComponentLog
+		if err := rows.Scan(&log.LogID, &log.ComponentID, &log.Timestamp, &log.Content, &log.Read); err != nil {
+			return nil, fmt.Errorf("failed to scan device log row by device ID: %w", err)
+		}
+		logs = append(logs, &log)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error during device log rows iteration by device ID: %w", err)
+	}
+	return logs, nil
+}
+
+// GetAllLogsByUser retrieves all logs for the user.
+func (d *PostgresDeviceDAO) GetAllLogsByUser(userID int) ([]*models.ComponentLog, error) {
+	rows, err := d.db.Query(`
+        SELECT sl.log_id, sl.component_id, sl.log_timestamp, sl.log_content, sl.log_read
+        FROM component_log sl
+        JOIN device_components ds ON sl.component_id = ds.component_id
+        JOIN device_location dl ON ds.device_id = dl.device_id AND dl.is_current = true
+        JOIN user_location ul ON ul.user_id = $1 AND ul.location_id = dl.location_id
     `, userID)
 
 	if err != nil {
@@ -546,77 +706,79 @@ func (d *PostgresDeviceDAO) GetAllLogsByUser(userID int) ([]*models.SensorLog, e
 	}
 	defer rows.Close()
 
-	var logs []*models.SensorLog
+	var logs []*models.ComponentLog
 	for rows.Next() {
-		var log models.SensorLog
-		// Ensure the fields in Scan match the order of columns in the SELECT statement
-		if err := rows.Scan(&log.SensorID, &log.Timestamp, &log.Content, &log.Read, &log.LogID); err != nil {
-			return nil, fmt.Errorf("failed to scan sensor log: %w", err)
+		var log models.ComponentLog
+		if err := rows.Scan(&log.LogID, &log.ComponentID, &log.Timestamp, &log.Content, &log.Read); err != nil {
+			return nil, fmt.Errorf("failed to scan component log row for all logs by user: %w", err)
 		}
 		logs = append(logs, &log)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error during row iteration: %w", err)
+		return nil, fmt.Errorf("error during all logs by user rows iteration: %w", err)
 	}
 	return logs, nil
 }
 
-func (d *PostgresDeviceDAO) UserHasAccessToSensor(userID int, sensorID string) (bool, error) {
+// UserHasAccessTocomponent checks if a user has access to a specific component.
+func (d *PostgresDeviceDAO) UserHasAccessTocomponent(userID int, ComponentID string) (bool, error) {
 	query := `
-		SELECT EXISTS (
-			SELECT 1
-			FROM device_sensors ds
-			JOIN device_location dl ON ds.device_id = dl.device_id
-			JOIN user_location ul ON dl.location_id = ul.location_id
-			WHERE ul.user_id = $1 AND ds.sensor_id = $2
-		)
-	`
+       SELECT EXISTS (
+          SELECT 1
+          FROM device_components ds
+          JOIN device_location dl ON ds.device_id = dl.device_id AND dl.is_current = true
+          JOIN user_location ul ON dl.location_id = ul.location_id
+          WHERE ul.user_id = $1 AND ds.component_id = $2
+       )
+    `
 	var hasAccess bool
-	err := d.db.QueryRow(query, userID, sensorID).Scan(&hasAccess)
+	err := d.db.QueryRow(query, userID, ComponentID).Scan(&hasAccess)
 	if err != nil {
-		return false, fmt.Errorf("failed to check user access to sensor: %w", err)
+		return false, fmt.Errorf("failed to check user access to component: %w", err)
 	}
 	return hasAccess, nil
 }
 
-func (d *PostgresDeviceDAO) MarkSensorLogsAsRead(sensorID string, logIds []int) error {
+// MarkcomponentLogsAsRead marks component logs as read for a specific component within a transaction.
+func (d *PostgresDeviceDAO) MarkcomponentLogsAsRead(tx *sql.Tx, ComponentID string, logIds []int) error {
 	if len(logIds) == 0 {
 		return nil // No logs to mark as read
 	}
 
-	// Create a placeholder string for the IN clause
+	executor := d.getExecutor(tx)
 	placeholders := make([]string, len(logIds))
 	args := make([]interface{}, len(logIds)+1)
 	for i, id := range logIds {
 		placeholders[i] = fmt.Sprintf("$%d", i+1)
 		args[i] = id
 	}
-	args[len(logIds)] = sensorID // Last argument is the sensor ID
+	args[len(logIds)] = ComponentID // Last argument is the component ID
 
 	query := fmt.Sprintf(`
-		UPDATE sensor_log
-		SET log_read = TRUE
-		WHERE log_id IN (%s) AND sensor_id = $%d
-	`, strings.Join(placeholders, ", "), len(args))
+       UPDATE component_log
+       SET log_read = TRUE
+       WHERE log_id IN (%s) AND component_id = $%d
+    `, strings.Join(placeholders, ", "), len(args))
 
-	_, err := d.db.Exec(query, args...)
+	_, err := executor.Exec(query, args...)
 	if err != nil {
-		return fmt.Errorf("failed to mark sensor logs as read: %w", err)
+		return fmt.Errorf("failed to mark component logs as read: %w", err)
 	}
 	return nil
 }
 
-func (d *PostgresDeviceDAO) MarkAllLogsAsRead(userID int) error {
-	// Check all location attributed to the user
+// MarkAllLogsAsRead marks all logs as read for a specific user within a transaction.
+func (d *PostgresDeviceDAO) MarkAllLogsAsRead(tx *sql.Tx, userID int) error {
+	executor := d.getExecutor(tx)
 	query := `
-		UPDATE sensor_log sl
-		SET log_read = TRUE
-		FROM device_sensors ds
-		JOIN device_location dl ON ds.device_id = dl.device_id
-		JOIN user_location ul ON dl.location_id = ul.location_id
-		WHERE ul.user_id = $1 AND sl.sensor_id = ds.sensor_id
-	`
-	_, err := d.db.Exec(query, userID)
+       UPDATE component_log sl
+       SET log_read = TRUE
+       FROM device_components ds
+       JOIN device_location dl ON ds.device_id = dl.device_id AND dl.is_current = true
+       JOIN user_location ul ON dl.location_id = ul.location_id
+       WHERE ul.user_id = $1 AND sl.component_id = ds.component_id
+    `
+	_, err := executor.Exec(query, userID)
 	if err != nil {
 		return fmt.Errorf("failed to mark all logs as read for user %d: %w", userID, err)
 	}

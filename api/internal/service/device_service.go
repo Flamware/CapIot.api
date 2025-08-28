@@ -4,46 +4,54 @@ import (
 	"CapIot-api/internal/models"
 	"CapIot-api/internal/repository"
 	"context"
-	"errors"
+	"database/sql"
 	"fmt"
 	"log"
 	"strings"
 )
 
-// MqttConfigPublisher defines the interface for publishing sensor configurations via MQTT.
+// MqttConfigPublisher defines the interface for publishing component configurations via MQTT.
 // This decouples the service from the concrete MqttHandler implementation.
 type MqttConfigPublisher interface {
-	SetDeviceConfig(deviceID string, sensorID string, minThreshold float64, maxThreshold float64) error
+	SetDeviceConfig(deviceID string, ComponentID string, minThreshold float64, maxThreshold float64) error
 }
 
 // DeviceService interface defines the business logic for devices
 type DeviceService interface {
-	CreateDevice(device *models.Device) error
-	GetDeviceByDeviceID(deviceID string) (*models.Device, error)
-	UpdateDeviceLastSeenAndStatus(deviceID string) error
-	Createsensor(sensor *models.Sensor) (*models.Sensor, error)
-	SetDeviceToLocation(ctx context.Context, id string, id2 int) error
-	GetAllDevices() ([]*models.Device, error)
-	GetOrCreatesensor(SensorID, sensorName, SensorType string) (*models.Sensor, error)
-	GetsensorByID(id string) (*models.Sensor, error)
-	LinksensorToDevice(id string, id2 string) error
-	UpdateDeviceOperationalStatus(id string, status models.OperationalStatus) error
-	GetDeviceByID(id string) (*models.Device, error)
-	GetsensorsByDeviceID(id string) ([]*models.Sensor, error)
-	GetUnassignedDevices() ([]*models.Device, error)
-	UnassignDeviceFromLocation(id string) error
-	GetLocationByDeviceID(id string) (*models.Location, error)
-	GetDevicesSensorsLocations(ctx context.Context, page int, limit int, term string) (map[string]interface{}, error)
-	DeleteDevice(ctx context.Context, id string) error
-	UpdatesensorRange(deviceID string, sensorID string, minThreshold float64, maxThreshold float64) error
-	HandleDeviceAlert(sensorId string, message string) error
-	GetSensorLogsByDeviceIDAndSensorID(id string, id2 string) ([]*models.SensorLog, error)
-	GetDeviceLogsByDeviceID(id string) ([]*models.SensorLog, error)
-	GetSensorLogsBySensorID(id string) ([]*models.SensorLog, error)
-	GetAllLogsByUser(userId int) ([]*models.SensorLog, error)
-	UserHasAccessToSensor(id int, id2 string) (bool, error)
-	MarkSensorLogsAsRead(id string, logIds []int) error
-	MarkAllLogsAsRead(id int) error
+	// Transaction management
+	BeginTransaction() (*sql.Tx, error) // Method to start a transaction
+
+	// Device operations
+	CreateDevice(tx *sql.Tx, device *models.Device) error                                                                // Now takes a transaction
+	GetDeviceByDeviceID(deviceID string) (*models.Device, error)                                                         // Read-only, no tx
+	UpdateDeviceLastSeenAndStatus(tx *sql.Tx, deviceID string, status models.OperationalStatus) error                    // Now takes a transaction
+	UpdateDeviceOperationalStatus(tx *sql.Tx, deviceID string, operationalStatus models.OperationalStatus) error         // Now takes a transaction
+	GetDeviceByID(id string) (*models.Device, error)                                                                     // Read-only, no tx
+	GetAllDevices() ([]*models.Device, error)                                                                            // Read-only, no tx
+	GetUnassignedDevices() ([]*models.Device, error)                                                                     // Read-only, no tx
+	DeleteDevice(ctx context.Context, id string) error                                                                   // No tx here, but DAO method might take it
+	UnassignDeviceFromLocation(tx *sql.Tx, id string) error                                                              // Updated to take tx
+	GetLocationByDeviceID(id string) (*models.Location, error)                                                           // Read-only, no tx
+	GetDevicescomponentsLocations(ctx context.Context, page int, limit int, term string) (map[string]interface{}, error) // Read-only, no tx
+	SetDeviceToLocation(ctx context.Context, deviceID string, locationID int) error
+
+	// Component operations
+	CreateComponent(tx *sql.Tx, component *models.Component) (*models.Component, error)                         // Now takes a transaction
+	GetComponentByID(id string) (*models.Component, error)                                                      // Read-only, no tx
+	LinkcomponentToDevice(tx *sql.Tx, deviceID string, ComponentID string) error                                // Now takes a transaction
+	UpdateDeviceComponentStatus(tx *sql.Tx, id string, status string) error                                     // Now takes a transaction
+	GetcomponentsByDeviceID(id string) ([]*models.Component, error)                                             // Read-only, no tx
+	UpdateComponentRange(deviceID string, ComponentID string, minThreshold float64, maxThreshold float64) error // This method will manage its own transaction or be part of a larger one
+
+	// Log operations
+	HandleDeviceAlert(tx *sql.Tx, componentID string, message string) error                         // Updated to take tx
+	GetcomponentLogsByDeviceIDAndComponentID(id string, id2 string) ([]*models.ComponentLog, error) // Read-only, no tx
+	GetDeviceLogsByDeviceID(id string) ([]*models.ComponentLog, error)                              // Read-only, no tx
+	GetcomponentLogsByComponentID(id string) ([]*models.ComponentLog, error)                        // Read-only, no tx
+	GetAllLogsByUser(userId int) ([]*models.ComponentLog, error)                                    // Read-only, no tx
+	UserHasAccessTocomponent(id int, id2 string) (bool, error)                                      // Read-only, no tx
+	MarkcomponentLogsAsRead(tx *sql.Tx, ComponentID string, logIds []int) error                     // Updated to take tx
+	MarkAllLogsAsRead(tx *sql.Tx, userID int) error                                                 // Updated to take tx
 }
 
 // DefaultDeviceService implements the DeviceService interface
@@ -61,104 +69,36 @@ func NewDeviceService(dao *repository.PostgresDeviceDAO, mqttPublisher MqttConfi
 	}
 }
 
-// CreateDevice calls the DAO to create a new device
-func (s *DefaultDeviceService) CreateDevice(device *models.Device) error {
-	return s.deviceDAO.CreateDevice(device)
+// --- Transaction Management ---
+func (s *DefaultDeviceService) BeginTransaction() (*sql.Tx, error) {
+	return s.deviceDAO.BeginTransaction() // Call the DAO's BeginTransaction
 }
 
-// GetDeviceByDeviceID calls the DAO to retrieve a device by its ID
+// --- Device Operations ---
+func (s *DefaultDeviceService) CreateDevice(tx *sql.Tx, device *models.Device) error {
+	// The business logic of checking for existence is now handled by the caller (e.g., MqttHandler)
+	// This method simply calls the DAO to create the device within the provided transaction.
+	return s.deviceDAO.CreateDevice(tx, device)
+}
+
 func (s *DefaultDeviceService) GetDeviceByDeviceID(deviceID string) (*models.Device, error) {
-	return s.deviceDAO.GetDeviceByDeviceID(deviceID)
+	return s.deviceDAO.GetDeviceByID(deviceID)
 }
 
-// UpdateDeviceLastSeenAndStatus calls the DAO to update the device's last seen and status
-func (s *DefaultDeviceService) UpdateDeviceLastSeenAndStatus(deviceID string) error {
-	return s.deviceDAO.UpdateDeviceLastSeenAndStatus(deviceID)
+func (s *DefaultDeviceService) UpdateDeviceLastSeenAndStatus(tx *sql.Tx, deviceID string, status models.OperationalStatus) error {
+	return s.deviceDAO.UpdateDeviceLastSeenAndStatus(tx, deviceID, status)
 }
 
-func (s *DefaultDeviceService) Createsensor(sensor *models.Sensor) (*models.Sensor, error) {
-	log.Printf("Attempting to create sensor with ID: '%s', Type: '%s'\n", sensor.SensorID, sensor.SensorType)
-
-	// Business logic: Check if a sensor with the same ID already exists
-	existingsensor, err := s.deviceDAO.GetsensorByID(sensor.SensorID)
-	if err != nil {
-		log.Printf("Error checking for existing sensor with ID '%s': %v\n", sensor.SensorID, err)
-	}
-	if existingsensor != nil {
-		log.Printf("sensor with ID '%s' already exists.\n", sensor.SensorID)
-		return existingsensor, fmt.Errorf("sensor with ID '%s' already exists", sensor.SensorID)
-	}
-
-	// Business logic: Sanitize or validate sensor data
-	if sensor.SensorID == "" {
-		log.Println("Error: sensor ID cannot be empty.")
-		return nil, errors.New("sensor ID cannot be empty")
-	}
-	if sensor.SensorType == "" {
-		log.Println("Error: sensor Type cannot be empty.")
-		return nil, errors.New("sensor name cannot be empty")
-	}
-
-	// Call the DAO to create the sensor
-	createdsensor, err := s.deviceDAO.Createsensor(sensor)
-	if err != nil {
-		log.Printf("Error creating sensor in DAO for ID '%s': %v\n", sensor.SensorID, err)
-		return nil, fmt.Errorf("error creating sensor in DAO: %w", err)
-	}
-
-	// Business logic: Optionally perform actions after successful creation
-	log.Printf("sensor '%s' with ID '%s' created successfully.\n", createdsensor.SensorType, createdsensor.SensorID)
-
-	return createdsensor, nil
+func (s *DefaultDeviceService) UpdateDeviceOperationalStatus(tx *sql.Tx, deviceID string, operationalStatus models.OperationalStatus) error {
+	// Business logic can go here, but the actual update happens in DAO with transaction
+	return s.deviceDAO.UpdateDeviceOperationalStatus(tx, deviceID, operationalStatus)
 }
 
-// SetDeviceToLocation calls the DAO to set a device to a specific location
-func (s *DefaultDeviceService) SetDeviceToLocation(ctx context.Context, deviceID string, locationID int) error {
-	// Validate input
-	if strings.TrimSpace(deviceID) == "" {
-		fmt.Println("Error in service: Device ID cannot be empty") // Basic logging
-		return fmt.Errorf("device ID cannot be empty")
-	}
-	if locationID <= 0 {
-		fmt.Printf("Error in service: Invalid location ID: %d\n", locationID) // Basic logging
-		return fmt.Errorf("invalid location ID: %d", locationID)
-	}
-
-	// First, check if the device exists
-	existingDevice, err := s.deviceDAO.GetDeviceByDeviceID(deviceID)
-	if err != nil {
-		fmt.Printf("Error in service checking device existence: %v\n", err) // Basic logging
-		return fmt.Errorf("error checking device existence: %w", err)
-	}
-	if existingDevice == nil {
-		fmt.Printf("Error in service: Device '%s' not found\n", deviceID) // Basic logging
-		return fmt.Errorf("device '%s' not found", deviceID)
-	}
-	// Check if device is already assigned to a location
-	existingLocation, err := s.deviceDAO.GetLocationByDeviceID(deviceID)
-	if err != nil {
-		fmt.Printf("Error in service checking device location: %v\n", err) // Basic logging
-		return fmt.Errorf("error checking device location: %w", err)
-	}
-	if existingLocation != nil {
-		fmt.Printf("Error in service: Device '%s' is already assigned to a location\n", deviceID) // Basic logging
-		return fmt.Errorf("device '%s' is already assigned to a location", deviceID)
-	}
-
-	// Call the DAO to set the device to the location
-	err = s.deviceDAO.SetDeviceToLocation(ctx, deviceID, locationID)
-	if err != nil {
-		// Log the error with added service-level context
-		fmt.Printf("Error in service setting device '%s' to location '%d': %v\n", deviceID, locationID, err)
-		// Potentially add more service-specific error context or logic here
-		// For example, you might check the type of the underlying error and decide to retry or handle it differently.
-		return fmt.Errorf("failed to set device '%s' to location '%d': %w", deviceID, locationID, err)
-	}
-	return nil
+func (s *DefaultDeviceService) GetDeviceByID(id string) (*models.Device, error) {
+	return s.deviceDAO.GetDeviceByID(id)
 }
 
-// internal/service/device_service.go
-func (s *DefaultDeviceService) GetAllDevices() ([]*models.Device, error) { // Ensure this return type
+func (s *DefaultDeviceService) GetAllDevices() ([]*models.Device, error) {
 	devices, err := s.deviceDAO.GetAllDevices()
 	if err != nil {
 		return nil, fmt.Errorf("error fetching devices: %w", err)
@@ -166,95 +106,6 @@ func (s *DefaultDeviceService) GetAllDevices() ([]*models.Device, error) { // En
 	return devices, nil
 }
 
-// internal/service/device_service.go
-
-func (s *DefaultDeviceService) GetOrCreatesensor(SensorID, sensorName, SensorType string) (*models.Sensor, error) {
-	// Try to get the sensor by ID first
-	existingsensor, err := s.deviceDAO.GetsensorByID(SensorID)
-	if err != nil {
-		return nil, fmt.Errorf("error checking for sensor with ID '%s': %w", SensorID, err)
-	}
-	if existingsensor != nil {
-		return existingsensor, nil // sensor found by ID
-	}
-
-	// sensor not found by ID, try by name
-	existingsensor, err = s.deviceDAO.GetsensorByID(SensorID) // Assuming you have a GetsensorByName in your DAO
-	if err != nil {
-		return nil, fmt.Errorf("error checking for sensor with name '%s': %w", sensorName, err)
-	}
-	if existingsensor != nil {
-		return existingsensor, nil // sensor found by name
-	}
-
-	// sensor not found, create a new one
-	newsensor := &models.Sensor{
-		SensorID:   SensorID,
-		SensorType: SensorType,
-	}
-	createdsensor, err := s.deviceDAO.Createsensor(newsensor)
-	if err != nil {
-		return nil, fmt.Errorf("error creating sensor '%s' with ID '%s': %w", sensorName, SensorID, err)
-	}
-	return createdsensor, nil
-}
-
-// GetsensorByID retrieves a sensor record by its ID (string)
-func (s *DefaultDeviceService) GetsensorByID(id string) (*models.Sensor, error) {
-	sensor, err := s.deviceDAO.GetsensorByID(id)
-	if err != nil {
-		return nil, fmt.Errorf("error retrieving sensor with ID '%s': %w", id, err)
-	}
-	return sensor, nil
-}
-
-// LinksensorToDevice in DefaultDeviceService
-func (s *DefaultDeviceService) LinksensorToDevice(deviceID string, SensorID string) error {
-	// ... (device and sensor existence checks) ...
-
-	devicesensor := &models.Devicesensor{
-		DeviceID: deviceID,
-		SensorID: SensorID,
-	}
-	return s.deviceDAO.InsertDevicesensor(devicesensor) // Correct call with the struct
-}
-
-// UpdateDeviceOperationalStatus updates the operational status of a device
-func (s *DefaultDeviceService) UpdateDeviceOperationalStatus(deviceID string, operationalStatus models.OperationalStatus) error {
-	// Add any business logic before updating the operational status
-	existingDevice, err := s.deviceDAO.GetDeviceByDeviceID(deviceID)
-	if err != nil {
-		return fmt.Errorf("error retrieving device '%s': %w", deviceID, err)
-	}
-	if existingDevice == nil {
-		return fmt.Errorf("device '%s' not found", deviceID)
-	}
-
-	// Perform any validation or business rules related to operational status changes
-	// For example, you might want to log the status change
-
-	return s.deviceDAO.UpdateDeviceOperationalStatus(deviceID, operationalStatus)
-}
-
-// GetDeviceByID retrieves a device by its ID
-func (s *DefaultDeviceService) GetDeviceByID(id string) (*models.Device, error) {
-	device, err := s.deviceDAO.GetDeviceByID(id)
-	if err != nil {
-		return nil, fmt.Errorf("error retrieving device with ID '%s': %w", id, err)
-	}
-	return device, nil
-}
-
-// GetsensorsByDeviceID retrieves sensors associated with a device ID
-func (s *DefaultDeviceService) GetsensorsByDeviceID(id string) ([]*models.Sensor, error) {
-	sensors, err := s.deviceDAO.GetsensorsByDeviceID(id)
-	if err != nil {
-		return nil, fmt.Errorf("error retrieving sensors for device ID '%s': %w", id, err)
-	}
-	return sensors, nil
-}
-
-// GetUnassignedDevices retrieves devices that are not assigned to any location
 func (s *DefaultDeviceService) GetUnassignedDevices() ([]*models.Device, error) {
 	unassignedDevices, err := s.deviceDAO.GetUnassignedDevices()
 	if err != nil {
@@ -263,9 +114,7 @@ func (s *DefaultDeviceService) GetUnassignedDevices() ([]*models.Device, error) 
 	return unassignedDevices, nil
 }
 
-// DeleteDevice deletes a device by its ID
 func (s *DefaultDeviceService) DeleteDevice(ctx context.Context, id string) error {
-	// Perform any necessary checks before deletion
 	existingDevice, err := s.deviceDAO.GetDeviceByID(id)
 	if err != nil {
 		return fmt.Errorf("error retrieving device '%s': %w", id, err)
@@ -273,19 +122,11 @@ func (s *DefaultDeviceService) DeleteDevice(ctx context.Context, id string) erro
 	if existingDevice == nil {
 		return fmt.Errorf("device '%s' not found", id)
 	}
-
-	// Call the DAO to delete the device
-	err = s.deviceDAO.DeleteDevice(id)
-	if err != nil {
-		return fmt.Errorf("error deleting device '%s': %w", id, err)
-	}
-
-	return nil
+	return s.deviceDAO.DeleteDevice(ctx, id)
 }
 
-// UnassignDeviceFromLocation unassigns a device from its current location
-func (s *DefaultDeviceService) UnassignDeviceFromLocation(id string) error {
-	// Perform any necessary checks before unassignment
+func (s *DefaultDeviceService) UnassignDeviceFromLocation(tx *sql.Tx, id string) error {
+	// Similar to DeleteDevice, might need its own transaction logic
 	existingDevice, err := s.deviceDAO.GetDeviceByID(id)
 	if err != nil {
 		return fmt.Errorf("error retrieving device '%s': %w", id, err)
@@ -293,17 +134,9 @@ func (s *DefaultDeviceService) UnassignDeviceFromLocation(id string) error {
 	if existingDevice == nil {
 		return fmt.Errorf("device '%s' not found", id)
 	}
-
-	// Call the DAO to unassign the device from its current location
-	err = s.deviceDAO.UnassignDeviceFromLocation(id)
-	if err != nil {
-		return fmt.Errorf("error unassigning device '%s': %w", id, err)
-	}
-
-	return nil
+	return s.deviceDAO.UnassignDeviceFromLocation(tx, id)
 }
 
-// GetLocationByDeviceID retrieves the location associated with a device ID
 func (s *DefaultDeviceService) GetLocationByDeviceID(id string) (*models.Location, error) {
 	location, err := s.deviceDAO.GetLocationByDeviceID(id)
 	if err != nil {
@@ -312,29 +145,20 @@ func (s *DefaultDeviceService) GetLocationByDeviceID(id string) (*models.Locatio
 	return location, nil
 }
 
-// GetDevicesSensorsLocations retrieves devices, sensors, and locations for a user
-func (s *DefaultDeviceService) GetDevicesSensorsLocations(ctx context.Context, page int, limit int, search string) (map[string]interface{}, error) {
-	log.Printf("GetDevicesSensorsLocations called with page: %d, limit: %d, search: '%s'", page, limit, search)
-
-	// Calculate offset
+func (s *DefaultDeviceService) GetDevicescomponentsLocations(ctx context.Context, page int, limit int, search string) (map[string]interface{}, error) {
+	log.Printf("GetDevicescomponentsLocations called with page: %d, limit: %d, search: '%s'", page, limit, search)
 	offset := (page - 1) * limit
-
-	// Fetch paginated and filtered data from the repository
-	devices, err := s.deviceDAO.FindAllWithSensorsAndLocations(ctx, limit, offset, search)
+	devices, err := s.deviceDAO.FindAllWithcomponentsAndLocations(ctx, limit, offset, search)
 	if err != nil {
 		log.Printf("Error fetching paginated and filtered data: %v", err)
 		return nil, err
 	}
-
-	// Fetch total count of items based on the search criteria
-	totalDevices, err := s.deviceDAO.CountAll(ctx, search) // Update CountAll to accept search
+	totalDevices, err := s.deviceDAO.CountAll(ctx, search)
 	if err != nil {
 		log.Printf("Error fetching total count with search: %v", err)
 		return nil, err
 	}
-
 	totalPages := (totalDevices + limit - 1) / limit
-
 	response := map[string]interface{}{
 		"data":        devices,
 		"currentPage": page,
@@ -342,13 +166,104 @@ func (s *DefaultDeviceService) GetDevicesSensorsLocations(ctx context.Context, p
 		"totalItems":  totalDevices,
 		"totalPages":  totalPages,
 	}
-
 	return response, nil
 }
 
-// UpdatesensorRange updates the operational range of a sensor
-func (s *DefaultDeviceService) UpdatesensorRange(deviceID string, sensorID string, minThreshold float64, maxThreshold float64) error {
-	// Validate device existence
+// GetcomponentsByDeviceID
+func (s *DefaultDeviceService) GetcomponentsByDeviceID(id string) ([]*models.Component, error) {
+	components, err := s.deviceDAO.GetcomponentsByDeviceID(id)
+	if err != nil {
+		return nil, fmt.Errorf("error retrieving components for device ID '%s': %w", id, err)
+	}
+	return components, nil
+}
+
+func (s *DefaultDeviceService) SetDeviceToLocation(ctx context.Context, deviceID string, locationID int) error {
+	tx, err := s.BeginTransaction()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+			panic(r)
+		} else if err != nil {
+			tx.Rollback()
+		} else {
+			tx.Commit()
+		}
+	}()
+
+	// Pass the transaction context to the DAO layer
+	ctxWithTx := context.WithValue(ctx, "tx", tx)
+	err = s.deviceDAO.SetDeviceToLocation(ctxWithTx, deviceID, locationID)
+	if err != nil {
+		return fmt.Errorf("failed to set device to location: %w", err)
+	}
+	return nil
+}
+
+// --- Component Operations ---
+func (s *DefaultDeviceService) CreateComponent(tx *sql.Tx, component *models.Component) (*models.Component, error) {
+	log.Printf("Attempting to create component with ID: '%s', Name: '%s' within transaction.\n", component.ComponentID, component.ComponentName)
+	createdComponent, err := s.deviceDAO.CreateComponent(tx, component) // Pass the transaction
+	if err != nil {
+		log.Printf("Error creating component in DAO for ID '%s': %v\n", component.ComponentID, err)
+		return nil, fmt.Errorf("error creating component in DAO: %w", err)
+	}
+	log.Printf("Component '%s' with ID '%s' created successfully within transaction.\n", createdComponent.ComponentName, createdComponent.ComponentID)
+	return createdComponent, nil
+}
+
+func (s *DefaultDeviceService) GetComponentByID(id string) (*models.Component, error) {
+	return s.deviceDAO.GetComponentByID(id)
+}
+
+func (s *DefaultDeviceService) LinkcomponentToDevice(tx *sql.Tx, deviceID string, ComponentID string) error {
+	// Logic to check for existence is now handled by the caller (e.g., MqttHandler)
+	// This method simply calls the DAO to link the component within the provided transaction.
+	log.Printf("Attempting to link component '%s' to device '%s' within transaction.\n", ComponentID, deviceID)
+	err := s.deviceDAO.LinkComponentToDevice(tx, deviceID, ComponentID) // Pass the transaction
+	if err != nil {
+		return fmt.Errorf("failed to link component '%s' to device '%s': %w", ComponentID, deviceID, err)
+	}
+	log.Printf("Linked component '%s' to device '%s' successfully within transaction.\n", ComponentID, deviceID)
+	return nil
+}
+
+func (s *DefaultDeviceService) UpdateDeviceComponentStatus(tx *sql.Tx, id string, status string) error {
+	// This method now updates the component's status within the provided transaction.
+	log.Printf("Updating component status for component ID: '%s' to status: '%s' within transaction.", id, status)
+	if strings.TrimSpace(id) == "" || strings.TrimSpace(status) == "" {
+		return fmt.Errorf("component ID and status cannot be empty")
+	}
+	err := s.deviceDAO.UpdateComponentStatus(tx, id, status) // Pass the transaction
+	if err != nil {
+		return fmt.Errorf("error updating component status for ID '%s': %w", id, err)
+	}
+	log.Printf("Successfully updated component status for component ID: '%s' to status: '%s' within transaction.", id, status)
+	return nil
+}
+
+func (s *DefaultDeviceService) UpdateComponentRange(deviceID string, ComponentID string, minThreshold float64, maxThreshold float64) error {
+	// This method needs to manage its own transaction if it's not part of a larger one.
+	// For simplicity, we'll create a new transaction here.
+	tx, err := s.BeginTransaction()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction for UpdateComponentRange: %w", err)
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+			panic(r)
+		} else if err != nil {
+			tx.Rollback()
+		} else {
+			tx.Commit()
+		}
+	}()
+
+	// Validate device existence (read-only, can be outside transaction or use tx.QueryRow)
 	device, err := s.deviceDAO.GetDeviceByID(deviceID)
 	if err != nil {
 		return fmt.Errorf("error retrieving device with ID '%s': %w", deviceID, err)
@@ -357,176 +272,131 @@ func (s *DefaultDeviceService) UpdatesensorRange(deviceID string, sensorID strin
 		return fmt.Errorf("device with ID '%s' not found", deviceID)
 	}
 
-	// Validate sensor existence
-	sensor, err := s.deviceDAO.GetsensorByID(sensorID)
+	// Validate component existence (read-only, can be outside transaction or use tx.QueryRow)
+	component, err := s.deviceDAO.GetComponentByID(ComponentID)
 	if err != nil {
-		return fmt.Errorf("error retrieving sensor with ID '%s': %w", sensorID, err)
+		return fmt.Errorf("error retrieving component with ID '%s': %w", ComponentID, err)
 	}
-	if sensor == nil {
-		return fmt.Errorf("sensor with ID '%s' not found", sensorID)
+	if component == nil {
+		return fmt.Errorf("component with ID '%s' not found", ComponentID)
 	}
 
-	// Update sensor thresholds
-	sensor.MinThreshold = &minThreshold
-	sensor.MaxThreshold = &maxThreshold
-	err = s.deviceDAO.UpdatesensorRange(sensor)
+	// Update component thresholds (within the transaction)
+	component.MinThreshold = &minThreshold
+	component.MaxThreshold = &maxThreshold
+	err = s.deviceDAO.UpdateComponentRange(tx, component) // Pass the transaction
 	if err != nil {
-		return fmt.Errorf("error updating sensor range for ID '%s': %w", sensorID, err)
+		return fmt.Errorf("error updating component range for ID '%s': %w", ComponentID, err)
 	}
 
-	// Publish updated configuration via MQTT
-	err = s.MqttConfigPublisher.SetDeviceConfig(deviceID, sensor.SensorID, minThreshold, maxThreshold)
+	// Publish updated configuration via MQTT (this is usually outside the DB transaction)
+	err = s.MqttConfigPublisher.SetDeviceConfig(deviceID, component.ComponentID, minThreshold, maxThreshold)
 	if err != nil {
-		log.Printf("Error publishing sensor config via MQTT for sensor ID '%s': %v", sensorID, err)
-		return fmt.Errorf("failed to publish sensor configuration: %w", err)
+		log.Printf("Error publishing component config via MQTT for component ID '%s': %v", ComponentID, err)
+		return fmt.Errorf("failed to publish component configuration: %w", err)
 	}
 
-	log.Printf("Sensor range updated successfully for ID '%s' and config published", sensorID)
+	log.Printf("Component range updated successfully for ID '%s' and config published", ComponentID)
 	return nil
 }
 
-// HandleDeviceAlert processes device alerts
-func (s *DefaultDeviceService) HandleDeviceAlert(SensorID string, message string) error {
-	// Log the alert handling
-	log.Printf("Handling alert for with sensor '%s':'%s' ", SensorID, message)
-
-	// Perform any necessary business logic here
-	// For example, you might want to log the alert to a database or notify an admin
-
-	// Call the DAO to handle the alert
-	err := s.deviceDAO.HandleDeviceAlert(SensorID, message)
+// --- Log Operations ---
+func (s *DefaultDeviceService) HandleDeviceAlert(tx *sql.Tx, ComponentID string, message string) error {
+	// This method might need to manage its own transaction.
+	// For simplicity, assuming DAO handles its own transaction or is part of a larger one.
+	log.Printf("Handling alert for component '%s': '%s' ", ComponentID, message)
+	err := s.deviceDAO.HandleDeviceAlert(tx, ComponentID, message)
 	if err != nil {
-		return fmt.Errorf("error handling alert for sensor '%s': %w", SensorID, err)
+		return fmt.Errorf("error handling alert for component '%s': %w", ComponentID, err)
 	}
-
-	log.Printf("Alert handled successfully for Sensor '%s'", SensorID)
+	log.Printf("Alert handled successfully for component '%s'", ComponentID)
 	return nil
 }
 
-// GetSensorLogsByDeviceIDAndSensorID retrieves sensor logs for a specific device and sensor
-func (s *DefaultDeviceService) GetSensorLogsByDeviceIDAndSensorID(deviceID string, sensorID string) ([]*models.SensorLog, error) {
-	log.Printf("Fetching logs for Device ID: '%s', Sensor ID: '%s'", deviceID, sensorID)
-
-	// Validate input
-	if strings.TrimSpace(deviceID) == "" || strings.TrimSpace(sensorID) == "" {
-		return nil, fmt.Errorf("device ID and sensor ID cannot be empty")
+func (s *DefaultDeviceService) GetcomponentLogsByDeviceIDAndComponentID(deviceID string, ComponentID string) ([]*models.ComponentLog, error) {
+	log.Printf("Fetching logs for Device ID: '%s', component ID: '%s'", deviceID, ComponentID)
+	if strings.TrimSpace(deviceID) == "" || strings.TrimSpace(ComponentID) == "" {
+		return nil, fmt.Errorf("device ID and component ID cannot be empty")
 	}
-
-	// Call the DAO to get the logs
-	logs, err := s.deviceDAO.GetSensorLogsByDeviceIDAndSensorID(deviceID, sensorID)
+	logs, err := s.deviceDAO.GetcomponentLogsByDeviceIDAndComponentID(deviceID, ComponentID)
 	if err != nil {
-		return nil, fmt.Errorf("error retrieving logs for Device ID '%s' and Sensor ID '%s': %w", deviceID, sensorID, err)
+		return nil, fmt.Errorf("error retrieving logs for Device ID '%s' and component ID '%s': %w", deviceID, ComponentID, err)
 	}
-
-	log.Printf("Retrieved %d logs for Device ID: '%s', Sensor ID: '%s'", len(logs), deviceID, sensorID)
+	log.Printf("Retrieved %d logs for Device ID: '%s', component ID: '%s'", len(logs), deviceID, ComponentID)
 	return logs, nil
 }
 
-// GetDeviceLogsByDeviceID retrieves all logs for a specific device
-func (s *DefaultDeviceService) GetDeviceLogsByDeviceID(deviceID string) ([]*models.SensorLog, error) {
+func (s *DefaultDeviceService) GetDeviceLogsByDeviceID(deviceID string) ([]*models.ComponentLog, error) {
 	log.Printf("Fetching logs for Device ID: '%s'", deviceID)
-
-	// Validate input
 	if strings.TrimSpace(deviceID) == "" {
 		return nil, fmt.Errorf("device ID cannot be empty")
 	}
-
-	// Call the DAO to get the logs
 	logs, err := s.deviceDAO.GetDeviceLogsByDeviceID(deviceID)
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving logs for Device ID '%s': %w", deviceID, err)
 	}
-
 	log.Printf("Retrieved %d logs for Device ID: '%s'", len(logs), deviceID)
 	return logs, nil
 }
 
-// GetSensorLogsBySensorID retrieves all logs for a specific sensor
-func (s *DefaultDeviceService) GetSensorLogsBySensorID(sensorID string) ([]*models.SensorLog, error) {
-	log.Printf("Fetching logs for Sensor ID: '%s'", sensorID)
-
-	// Validate input
-	if strings.TrimSpace(sensorID) == "" {
-		return nil, fmt.Errorf("sensor ID cannot be empty")
+func (s *DefaultDeviceService) GetcomponentLogsByComponentID(ComponentID string) ([]*models.ComponentLog, error) {
+	log.Printf("Fetching logs for component ID: '%s'", ComponentID)
+	if strings.TrimSpace(ComponentID) == "" {
+		return nil, fmt.Errorf("component ID cannot be empty")
 	}
-
-	// Call the DAO to get the logs
-	logs, err := s.deviceDAO.GetSensorLogsBySensorID(sensorID)
+	logs, err := s.deviceDAO.GetcomponentLogsByComponentID(ComponentID)
 	if err != nil {
-		return nil, fmt.Errorf("error retrieving logs for Sensor ID '%s': %w", sensorID, err)
+		return nil, fmt.Errorf("error retrieving logs for component ID '%s': %w", ComponentID, err)
 	}
-
-	log.Printf("Retrieved %d logs for Sensor ID: '%s'", len(logs), sensorID)
+	log.Printf("Retrieved %d logs for component ID: '%s'", len(logs), ComponentID)
 	return logs, nil
 }
 
-// GetAllLogsByUser retrieves all logs for the user
-func (s *DefaultDeviceService) GetAllLogsByUser(userId int) ([]*models.SensorLog, error) {
+func (s *DefaultDeviceService) GetAllLogsByUser(userId int) ([]*models.ComponentLog, error) {
 	log.Println("Fetching all logs for the user")
-
-	// Call the DAO to get all logs
 	logs, err := s.deviceDAO.GetAllLogsByUser(userId)
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving all logs: %w", err)
 	}
-
 	log.Printf("Retrieved %d logs for the user", len(logs))
 	return logs, nil
 }
 
-// UserHasAccessToSensor checks if a user has access to a specific sensor
-func (s *DefaultDeviceService) UserHasAccessToSensor(userId int, sensorID string) (bool, error) {
-	log.Printf("Checking access for User ID: '%d' to Sensor ID: '%s'", userId, sensorID)
-
-	// Validate input
-	if userId <= 0 || strings.TrimSpace(sensorID) == "" {
-		return false, fmt.Errorf("invalid user ID or sensor ID")
+func (s *DefaultDeviceService) UserHasAccessTocomponent(userId int, ComponentID string) (bool, error) {
+	log.Printf("Checking access for User ID: '%d' to component ID: '%s'", userId, ComponentID)
+	if userId <= 0 || strings.TrimSpace(ComponentID) == "" {
+		return false, fmt.Errorf("invalid user ID or component ID")
 	}
-
-	// Call the DAO to check access
-	hasAccess, err := s.deviceDAO.UserHasAccessToSensor(userId, sensorID)
+	hasAccess, err := s.deviceDAO.UserHasAccessTocomponent(userId, ComponentID)
 	if err != nil {
-		return false, fmt.Errorf("error checking access for User ID '%d' to Sensor ID '%s': %w", userId, sensorID, err)
+		return false, fmt.Errorf("error checking access for User ID '%d' to component ID '%s': %w", userId, ComponentID, err)
 	}
-
-	log.Printf("User ID: '%d' has access to Sensor ID: '%s': %v", userId, sensorID, hasAccess)
+	log.Printf("User ID: '%d' has access to component ID: '%s': %v", userId, ComponentID, hasAccess)
 	return hasAccess, nil
 }
 
-// MarkSensorLogsAsRead marks sensor logs as read for a specific sensor
-func (s *DefaultDeviceService) MarkSensorLogsAsRead(sensorID string, logIds []int) error {
-	log.Printf("Marking logs as read for Sensor ID: '%s'", sensorID)
-
-	// Validate input
-	if strings.TrimSpace(sensorID) == "" {
-		return fmt.Errorf("sensor ID cannot be empty")
+func (s *DefaultDeviceService) MarkcomponentLogsAsRead(tx *sql.Tx, ComponentID string, logIds []int) error {
+	log.Printf("Marking logs as read for component ID: '%s'", ComponentID)
+	if strings.TrimSpace(ComponentID) == "" {
+		return fmt.Errorf("component ID cannot be empty")
 	}
-
-	// Call the DAO to mark logs as read
-	err := s.deviceDAO.MarkSensorLogsAsRead(sensorID, logIds)
+	err := s.deviceDAO.MarkcomponentLogsAsRead(tx, ComponentID, logIds)
 	if err != nil {
-		return fmt.Errorf("error marking logs as read for Sensor ID '%s': %w", sensorID, err)
+		return fmt.Errorf("error marking logs as read for component ID '%s': %w", ComponentID, err)
 	}
-
-	log.Printf("Successfully marked logs as read for Sensor ID: '%s'", sensorID)
+	log.Printf("Successfully marked logs as read for component ID: '%s'", ComponentID)
 	return nil
 }
 
-// MarkAllLogsAsRead marks all logs as read for a specific user
-func (s *DefaultDeviceService) MarkAllLogsAsRead(userId int) error {
+func (s *DefaultDeviceService) MarkAllLogsAsRead(tx *sql.Tx, userId int) error {
 	log.Printf("Marking all logs as read for User ID: '%d'", userId)
-
-	// Validate input
 	if userId <= 0 {
 		return fmt.Errorf("invalid user ID")
 	}
-
-	// Call the DAO to mark all logs as read
-	err := s.deviceDAO.MarkAllLogsAsRead(userId)
+	err := s.deviceDAO.MarkAllLogsAsRead(tx, userId)
 	if err != nil {
 		return fmt.Errorf("error marking all logs as read for User ID '%d': %w", userId, err)
 	}
-
 	log.Printf("Successfully marked all logs as read for User ID: '%d'", userId)
 	return nil
 }

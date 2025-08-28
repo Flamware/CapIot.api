@@ -9,7 +9,7 @@ type LocationDAO interface {
 	InsertLocation(location models.Location) error
 	LocationExists(ID int) (bool, error)
 	GetAllLocations(ctx context.Context, page int, limit int, term string) ([]*models.Location, error)
-	GetsensorsByLocationID(id string) ([]models.Sensor, error)
+	GetComponentsByLocationID(id string) ([]models.Component, error)
 	GetLocationByID(id string) (models.Location, error)
 	GetDevicesByLocationID(id string) ([]models.Device, error)
 	GetLocationsDevicesUsers(ctx context.Context, page int, limit int, term string) ([]*models.LocationWithUsersDevices, error)

@@ -21,7 +21,7 @@ box "Application Layer" #LightGreen
     actor "User/Frontend" as U
 end box
 
-note right of D : Sensor data, telemetry, events
+note right of D : component data, telemetry, events
 
 ' Device to Device Broker (MQTT) - Initial Connection & Availability
 D -[#blue]> DB : Connect (MQTT)\n(with LWT: devices/lwt/deviceID)
@@ -65,10 +65,10 @@ deactivate D
 
 note left of DB : MQTT: Data ingestion, routing, processing, device management.
 
-' Device to API Gateway (HTTP POST) - Sensor Data
-D -[#red]> API : Send Sensor Data (HTTP POST)\n(path: /influxdb/sensordata, every 5s when 'Running')
+' Device to API Gateway (HTTP POST) - component Data
+D -[#red]> API : Send component Data (HTTP POST)\n(path: /influxdb/componentdata, every 5s when 'Running')
 activate API
-note right of API : Receives aggregated sensor data from devices.
+note right of API : Receives aggregated component data from devices.
 API --[#red]> D : HTTP Response (2xx/4xx Status Code)\n(acknowledges data reception)
 deactivate API
 

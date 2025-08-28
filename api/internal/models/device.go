@@ -2,6 +2,18 @@ package models
 
 import "time"
 
+// Component types and subtypes as constants for better type safety and clarity.
+const (
+	ComponentTypecomponent = "component"
+	ComponentTypeActuator  = "actuator"
+	ComponentTypeIndicator = "indicator"
+
+	ComponentSubtypeTemperature = "temperature"
+	ComponentSubtypeHumidity    = "humidity"
+	ComponentSubtypeFan         = "fan"
+	ComponentSubtypeLED         = "LED"
+)
+
 // Device represents the device data in the database.
 type Device struct {
 	DeviceID  string    `json:"device_id" db:"device_id"`
@@ -10,34 +22,39 @@ type Device struct {
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 }
 
-// sensor represents the sensor type data.
-type Sensor struct {
-	SensorID     string   `json:"sensor_id" db:"sensor_id"`
-	SensorType   string   `json:"sensor_type" db:"sensor_type"`
+// Component represents the component type data.
+type Component struct {
+	ComponentID      string   `json:"component_id" db:"component_id"`
+	ComponentName    string   `json:"component_name" db:"component_name"`
+	ComponentType    string   `json:"component_type" db:"component_type"`
+	ComponentSubtype string   `json:"component_subtype,omitempty" db:"component_subtype"`
+	ComponentStatus  string   `json:"component_status,omitempty" db:"component_status"`
+	MinThreshold     *float64 `json:"min_threshold,omitempty" db:"min_threshold"`
+	MaxThreshold     *float64 `json:"max_threshold,omitempty" db:"max_threshold"`
+	MaxRunningHours  *int32   `json:"max_running_hours,omitempty" db:"max_running_hours"`
+}
+
+type ComponentRangeUpdate struct {
+	ComponentID  string   `json:"component_id" db:"component_id"`
 	MinThreshold *float64 `json:"min_threshold,omitempty" db:"min_threshold"`
 	MaxThreshold *float64 `json:"max_threshold,omitempty" db:"max_threshold"`
 }
 
-type SensorRangeUpdate struct {
-	SensorID     string   `json:"sensor_id" db:"sensor_id"`
-	MinThreshold *float64 `json:"min_threshold,omitempty" db:"min_threshold"`
-	MaxThreshold *float64 `json:"max_threshold,omitempty" db:"max_threshold"`
+// DeviceComponent represents the link between a device and a specific component instance.
+type DeviceComponent struct {
+	DeviceID         string    `json:"device_id" db:"device_id"`
+	ComponentID      string    `json:"component_id" db:"component_id"`
+	InstallationDate time.Time `json:"installation_date" db:"installation_date"`
+	ExpiryDate       time.Time `json:"expiry_date,omitempty" db:"expiry_date"`
 }
 
-// Devicesensor represents the link between a device and a specific sensor instance.
-type Devicesensor struct {
-	DeviceID     string   `json:"device_id" db:"device_id"`
-	SensorID     string   `json:"sensor_id" db:"sensor_id"`
-	MinThreshold *float64 `json:"min_threshold,omitempty" db:"min_threshold"`
-	MaxThreshold *float64 `json:"max_threshold,omitempty" db:"max_threshold"`
-}
-
-type SensorLog struct {
-	SensorID  string    `json:"sensor_id" db:"sensor_id"`
-	Timestamp time.Time `json:"timestamp" db:"log_timestamp"`
-	Content   string    `json:"content" db:"log_content"`
-	Read      bool      `json:"read" db:"log_read"`
-	LogID     int       `json:"log_id" db:"log_id"`
+// ComponentLog represents the log data from a component.
+type ComponentLog struct {
+	LogID       int       `json:"log_id" db:"log_id"`
+	ComponentID string    `json:"component_id" db:"component_id"`
+	Timestamp   time.Time `json:"timestamp" db:"log_timestamp"`
+	Content     string    `json:"content" db:"log_content"`
+	Read        bool      `json:"read" db:"log_read"`
 }
 
 // DeviceLocation represents the link between a device and a location.
@@ -48,10 +65,10 @@ type DeviceLocation struct {
 	IsCurrent  bool      `json:"is_current" db:"is_current"`
 }
 
-// DeviceWithsensors represents a device with its associated sensors.
-type DeviceWithsensors struct {
+// DeviceWithComponents represents a device with its associated components.
+type DeviceWithComponents struct {
 	*Device
-	Sensors []*Sensor `json:"sensors,omitempty"`
+	Components []*Component `json:"components,omitempty"`
 }
 
 // OperationalStatus represents the operational status of a device.
@@ -63,9 +80,9 @@ const (
 	StatusIdle    OperationalStatus = "Idle"
 )
 
-// DeviceWithSensorsAndLocation represents a device with its sensors and location.
-type DeviceWithSensorsAndLocation struct {
-	*DeviceWithsensors
+// DeviceWithComponentsAndLocation represents a device with its components and location.
+type DeviceWithComponentsAndLocation struct {
+	*DeviceWithComponents
 	Location *Location `json:"location,omitempty"`
 }
 

@@ -105,7 +105,7 @@ func (h *LocationHandler) CreateLocation(w http.ResponseWriter, r *http.Request)
 	w.Write([]byte("Location created successfully"))
 }
 
-func (h *LocationHandler) GetsensorsByLocationID(w http.ResponseWriter, r *http.Request) {
+func (h *LocationHandler) GetComponentsByLocationID(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -118,14 +118,14 @@ func (h *LocationHandler) GetsensorsByLocationID(w http.ResponseWriter, r *http.
 		return
 	}
 
-	sensors, err := h.locationService.GetsensorsByLocationID(locationId)
+	components, err := h.locationService.GetComponentsByLocationID(locationId)
 	if err != nil {
-		http.Error(w, "Error getting sensors", http.StatusInternalServerError)
+		http.Error(w, "Error getting components", http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(sensors); err != nil {
+	if err := json.NewEncoder(w).Encode(components); err != nil {
 		http.Error(w, "Error encoding response", http.StatusInternalServerError)
 		return
 	}
