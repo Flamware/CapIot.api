@@ -84,30 +84,24 @@ func (h *AdminHandler) GetUsersLocations(writer http.ResponseWriter, request *ht
 		return
 	}
 
-	// Get pagination parameters from query string
-	pageStr := request.URL.Query().Get("page")
-	limitStr := request.URL.Query().Get("limit")
+	// Get the user ID from the query parameters
+	vars := mux.Vars(request)
 
-	page := 1
-	limit := 10 // Default page size
-
-	if pageStr != "" {
-		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
-			page = p
-		}
+	userIDStr, ok := vars["userID"]
+	if !ok {
+		log.Printf("Missing user ID in path")
+		http.Error(writer, "Missing user ID in path", http.StatusBadRequest)
+		return
 	}
 
-	if limitStr != "" {
-		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 100 { // Add a reasonable max limit
-			limit = l
-		}
+	userID, err := strconv.Atoi(userIDStr)
+	if err != nil {
+		log.Printf("Invalid user ID format: %v", err)
+		http.Error(writer, "Invalid user ID format", http.StatusBadRequest)
+		return
 	}
-
-	// Get the optional search parameter
-	searchTerm := request.URL.Query().Get("search")
-
 	// Call AuthService to get users and locations
-	usersLocations, err := h.userService.GetUsersLocations(request.Context(), page, limit, searchTerm)
+	usersLocations, err := h.userService.GetUserSites(request.Context(), userID)
 	if err != nil {
 		log.Printf("Failed to get users and locations: %v", err)
 		http.Error(writer, "Failed to retrieve data", http.StatusInternalServerError)
@@ -167,38 +161,6 @@ func (h *AdminHandler) GetLocationsDevicesUsers(writer http.ResponseWriter, requ
 		log.Printf("Failed to encode response: %v", err)
 		http.Error(writer, "Failed to send response", http.StatusInternalServerError)
 	}
-}
-
-func (h *AdminHandler) DeleteDevice(writer http.ResponseWriter, request *http.Request) {
-	log.Printf("Received %s request to delete device", request.Method)
-
-	if request.Method != http.MethodDelete {
-		log.Printf("Method %s not allowed...", request.Method)
-		utils.RespondWithError(writer, http.StatusMethodNotAllowed, "Method not allowed", nil)
-		return
-	}
-
-	vars := mux.Vars(request)
-	deviceID, ok := vars["deviceID"]
-	if !ok {
-		log.Printf("Missing device ID in path")
-		utils.RespondWithError(writer, http.StatusBadRequest, "Missing device ID in path", nil)
-		return
-	}
-
-	log.Printf("Attempting to delete device with ID: %s", deviceID)
-
-	if err := h.deviceService.DeleteDevice(request.Context(), deviceID); err != nil {
-		log.Printf("Failed to delete device '%s': %v", deviceID, err)
-		if apiErr, ok := err.(*models.APIError); ok {
-			utils.RespondWithError(writer, apiErr.StatusCode, apiErr.Message, apiErr.Details)
-			return
-		}
-		utils.RespondWithError(writer, http.StatusInternalServerError, "Failed to delete device", map[string]string{"error": err.Error(), "deviceID": deviceID})
-		return
-	}
-
-	writer.WriteHeader(http.StatusNoContent) // Standard response for successful deletion with no body
 }
 
 // GetUserRoleHandler retrieves the roles of the authenticated user

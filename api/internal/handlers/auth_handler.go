@@ -50,7 +50,7 @@ func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Call AuthService to authenticate and generate JWT
-	token, err := h.authService.Login(req.Email, req.Password)
+	token, err := h.authService.Login(r.Context(), req.Email, req.Password)
 	if err != nil {
 		// Log authentication error
 		log.Printf("Authentication failed for email %s: %v", req.Email, err)
@@ -91,7 +91,7 @@ func (h *AuthHandler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Call AuthService to register the user
-	err := h.authService.Register(req.Email, req.Password)
+	err := h.authService.Register(r.Context(), req.Email, req.Password)
 	if err != nil {
 		// Log registration error
 		log.Printf("Registration failed for email %s: %v", req.Email, err)

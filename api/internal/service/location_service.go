@@ -19,6 +19,9 @@ type LocationService interface {
 	GetLocationsDevicesUsers(context context.Context, page int, limit int, term string) (map[string]interface{}, error)
 	DeleteLocation(ctx context.Context, id string) error
 	ModifyLocation(ctx context.Context, location models.Location) error
+	CreateSite(ctx context.Context, site models.Site) (*models.Site, error)
+	GetSitesWithPagination(ctx context.Context, page int, limit int, term string) (map[string]interface{}, error)
+	DeleteSite(ctx context.Context, id int64) error
 }
 
 func NewLocationService(dao dao.LocationDAO) *DefaultLocationService {
@@ -131,4 +134,63 @@ func (s *DefaultLocationService) ModifyLocation(ctx context.Context, location mo
 		return err
 	}
 	return nil
+}
+
+// CreateSite creates a new site in the database and returns the created object.
+func (s *DefaultLocationService) CreateSite(ctx context.Context, site models.Site) (*models.Site, error) {
+	log.Printf("CreateSite called with site: %+v", site)
+
+	// The DAO method should now return the created site with its new ID.
+	createdSite, err := s.dao.CreateSite(ctx, site)
+	if err != nil {
+		log.Printf("Error creating site: %v", err)
+		return nil, err
+	}
+
+	log.Printf("Site created successfully with ID: %d", *createdSite.ID)
+	return createdSite, nil
+}
+
+// DeleteSite deletes a site by its ID.
+func (s *DefaultLocationService) DeleteSite(ctx context.Context, id int64) error {
+	log.Printf("DeleteSite called with ID: %d", id)
+
+	err := s.dao.DeleteSite(ctx, id)
+	if err != nil {
+		log.Printf("Error deleting site with ID %d: %v", id, err)
+		return err
+	}
+
+	log.Printf("Site with ID %d deleted successfully", id)
+	return nil
+}
+
+// GetSitesWithPagination retrieves sites with pagination and optional search term.
+func (s *DefaultLocationService) GetSitesWithPagination(ctx context.Context, page int, limit int, term string) (map[string]interface{}, error) {
+	log.Printf("GetSitesWithPagination called with page: %d, limit: %d, search: '%s'", page, limit, term)
+
+	sites, err := s.dao.GetSitesWithPagination(ctx, page, limit, term)
+	if err != nil {
+		log.Printf("Error fetching paginated sites: %v", err)
+		return nil, err
+	}
+
+	// Fetch total count of items based on the search criteria
+	totalSites, err := s.dao.CountSites(ctx, term) // Assuming you have a CountSites in your Location DAO
+	if err != nil {
+		log.Printf("Error fetching total count of sites with search: %v", err)
+		return nil, err
+	}
+
+	totalPages := (totalSites + limit - 1) / limit
+
+	response := map[string]interface{}{
+		"data":        sites,
+		"currentPage": page,
+		"pageSize":    limit,
+		"totalItems":  totalSites,
+		"totalPages":  totalPages,
+	}
+
+	return response, nil
 }

@@ -42,14 +42,10 @@ CREATE TABLE IF NOT EXISTS public.locations (
                                                 location_id SERIAL PRIMARY KEY,
                                                 location_name TEXT NOT NULL,
                                                 location_description TEXT,
-                                                site_id INTEGER, -- Clé étrangère vers la table des sites
+                                                site_id INTEGER,
                                                 CONSTRAINT fk_site FOREIGN KEY (site_id) REFERENCES public.sites(site_id) ON DELETE CASCADE
     );
 
--- Création de la table des composants physiques (instances)
--- Chaque ligne représente une instance unique d'un composant physique.
--- 'component_id' est son identifiant unique (généré par l'appareil comme une chaîne de texte).
--- 'component_name' est le nom générique du modèle de composant (ex: 'temp-sim-001').
 CREATE TABLE IF NOT EXISTS public.components (
                                                  component_id TEXT PRIMARY KEY, -- Identifiant unique pour CHAQUE composant physique
                                                  component_name VARCHAR(255) NOT NULL, -- Nom générique du modèle de composant
@@ -65,14 +61,15 @@ CREATE TABLE IF NOT EXISTS public.components (
 -- Tables de Liaison
 -- ====================================================================================================
 
--- Création de la table user_location pour lier les utilisateurs à leurs emplacements
-CREATE TABLE IF NOT EXISTS public.user_location (
-                                                    user_id INTEGER NOT NULL,
-                                                    location_id INTEGER NOT NULL,
-                                                    assigned_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                                                    PRIMARY KEY (user_id, location_id),
-    CONSTRAINT user_location_location_id_fkey FOREIGN KEY (location_id) REFERENCES public.locations(location_id) ON DELETE CASCADE,
-    CONSTRAINT user_location_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE
+-- Suppression de la table user_location. Les utilisateurs sont maintenant liés aux sites.
+-- Création de la table user_site pour lier les utilisateurs à leurs sites
+CREATE TABLE IF NOT EXISTS public.user_site (
+                                                user_id INTEGER NOT NULL,
+                                                site_id INTEGER NOT NULL,
+                                                assigned_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                                                PRIMARY KEY (user_id, site_id),
+    CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_site FOREIGN KEY (site_id) REFERENCES public.sites(site_id) ON DELETE CASCADE
     );
 
 -- Création de la table device_location pour suivre les emplacements actuels et historiques d'un appareil

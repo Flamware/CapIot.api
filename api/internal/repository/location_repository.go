@@ -18,31 +18,32 @@ func NewPostgresLocationRepository(db *sql.DB) *PostgresLocationRepository {
 	return &PostgresLocationRepository{db: db}
 }
 
+// --- Location Operations ---
+
 // InsertLocation inserts a location into the database.
 func (r *PostgresLocationRepository) InsertLocation(location models.Location) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	query := `INSERT INTO locations (location_name, location_description) VALUES ($1, $2)`
-	_, err := r.db.ExecContext(ctx, query, location.Name, location.Description)
-	if err != nil {
+	query := `INSERT INTO locations (location_name, location_description, site_id) VALUES ($1, $2, $3)`
+	if _, err := r.db.ExecContext(ctx, query, location.Name, location.Description, location.SiteID); err != nil {
 		log.Printf("Error inserting location into database: %v\n", err)
 		return err
 	}
-	log.Printf("Location %s inserted into database.\n", location.ID)
+	log.Printf("Location %s inserted into database.\n", *location.Name)
 	return nil
 }
 
 // LocationExists checks if a location exists in the database.
 func (r *PostgresLocationRepository) LocationExists(ID int) (bool, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second) // Reduce timeout if 5s is too long
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	const query = `SELECT 1 FROM locations WHERE location_id = $1 LIMIT 1` // Use LIMIT 1 instead of EXISTS
+	const query = `SELECT 1 FROM locations WHERE location_id = $1 LIMIT 1`
 	var exists int
 	err := r.db.QueryRowContext(ctx, query, ID).Scan(&exists)
 	if err == sql.ErrNoRows {
-		return false, nil // Return false if no rows are found
+		return false, nil
 	} else if err != nil {
 		log.Printf("Error checking location existence: %v\n", err)
 		return false, err
@@ -50,17 +51,18 @@ func (r *PostgresLocationRepository) LocationExists(ID int) (bool, error) {
 	return true, nil
 }
 
-// GetAllLocations retrieves all locations from the database.
+// GetAllLocations retrieves all locations from the database with pagination and search.
 func (r *PostgresLocationRepository) GetAllLocations(ctx context.Context, page int, limit int, term string) ([]*models.Location, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	query := `SELECT location_id, location_name, location_description
-	FROM locations
-	WHERE location_name ILIKE '%' || $1 || '%'
-	ORDER BY location_name
-	LIMIT $2 OFFSET $3`
-
+	query := `
+       SELECT location_id, location_name, location_description, site_id
+       FROM locations
+       WHERE location_name ILIKE '%' || $1 || '%'
+       ORDER BY location_name
+       LIMIT $2 OFFSET $3
+    `
 	rows, err := r.db.QueryContext(ctx, query, term, limit, (page-1)*limit)
 	if err != nil {
 		log.Printf("Error getting all locations: %v\n", err)
@@ -68,18 +70,19 @@ func (r *PostgresLocationRepository) GetAllLocations(ctx context.Context, page i
 	}
 	defer rows.Close()
 
-	locations := []*models.Location{}
-
+	var locations []*models.Location
 	for rows.Next() {
 		var location models.Location
-
-		if err := rows.Scan(
-			&location.ID,
-			&location.Name,
-			&location.Description,
-		); err != nil {
+		var siteID sql.NullInt32
+		if err := rows.Scan(&location.ID, &location.Name, &location.Description, &siteID); err != nil {
 			log.Printf("Error scanning location row: %v\n", err)
 			return nil, err
+		}
+		if siteID.Valid {
+			id := int(siteID.Int32)
+			location.SiteID = &id
+		} else {
+			location.SiteID = nil
 		}
 		locations = append(locations, &location)
 	}
@@ -88,11 +91,10 @@ func (r *PostgresLocationRepository) GetAllLocations(ctx context.Context, page i
 		log.Printf("Error iterating location rows: %v\n", err)
 		return nil, err
 	}
-
 	return locations, nil
 }
 
-// GetLocationByID retrieves a location by its ID from the database.
+// GetLocationByID retrieves a location by its ID.
 func (r *PostgresLocationRepository) GetLocationByID(id string) (models.Location, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -103,98 +105,133 @@ func (r *PostgresLocationRepository) GetLocationByID(id string) (models.Location
 	var location models.Location
 	if err := row.Scan(&location.ID, &location.Name, &location.Description); err != nil {
 		if err == sql.ErrNoRows {
-			return models.Location{}, nil // Return empty location if not found
+			return models.Location{}, nil
 		}
 		log.Printf("Error scanning location row: %v\n", err)
 		return models.Location{}, err
 	}
-
 	return location, nil
 }
 
-// GetComponentsByLocationID retrieves components associated with a location ID.
-func (r *PostgresLocationRepository) GetComponentsByLocationID(locationID string) ([]models.Component, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+// CountAll counts all locations in the database.
+func (r *PostgresLocationRepository) CountAll(ctx context.Context, term string) (int, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	query := `SELECT
-       c.component_id,
-       c.component_type
-    FROM components c
-    JOIN device_components dc ON c.component_id = dc.component_id
-    JOIN device_location dl ON dc.device_id = dl.device_id
-    WHERE dl.location_id = $1 `
-
-	rows, err := r.db.QueryContext(ctx, query, locationID)
+	query := `SELECT COUNT(*) FROM locations WHERE location_name ILIKE '%' || $1 || '%'`
+	var count int
+	err := r.db.QueryRowContext(ctx, query, term).Scan(&count)
 	if err != nil {
-		log.Printf("Error getting components by location ID: %v\n", err)
-		return []models.Component{}, err
+		log.Printf("Error counting locations: %v\n", err)
+		return 0, err
+	}
+	return count, nil
+}
+
+// DeleteLocation deletes a location by its ID.
+func (r *PostgresLocationRepository) DeleteLocation(ctx context.Context, id string) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	query := `DELETE FROM locations WHERE location_id = $1`
+	if _, err := r.db.ExecContext(ctx, query, id); err != nil {
+		log.Printf("Error deleting location with ID %s: %v\n", id, err)
+		return err
+	}
+	log.Printf("Location with ID %s deleted from database.\n", id)
+	return nil
+}
+
+// DeleteSite deletes a site by its ID.
+func (r *PostgresLocationRepository) DeleteSite(ctx context.Context, id int64) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	query := `DELETE FROM sites WHERE site_id = $1`
+	if _, err := r.db.ExecContext(ctx, query, id); err != nil {
+		log.Printf("Error deleting site with ID %s: %v\n", id, err)
+		return err
+	}
+	log.Printf("Site with ID %s deleted from database.\n", id)
+	return nil
+}
+
+// ModifyLocation modifies a location in the database.
+func (r *PostgresLocationRepository) ModifyLocation(ctx context.Context, location models.Location) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	query := `UPDATE locations SET location_name = $1, location_description = $2 WHERE location_id = $3`
+	if _, err := r.db.ExecContext(ctx, query, location.Name, location.Description, location.ID); err != nil {
+		log.Printf("Error modifying location with ID %s: %v\n", location.ID, err)
+		return err
+	}
+	log.Printf("Location with ID %s modified in database.\n", location.ID)
+	return nil
+}
+
+// --- Site Operations ---
+
+// CreateSite creates a new site in the database.
+func (r *PostgresLocationRepository) CreateSite(ctx context.Context, site models.Site) (*models.Site, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	query := `INSERT INTO sites (site_name, site_address) VALUES ($1, $2)`
+	if _, err := r.db.ExecContext(ctx, query, site.Name, site.Address); err != nil {
+		log.Printf("Error inserting site into database: %v\n", err)
+		return nil, err
+	}
+	log.Printf("Site %s inserted into database.\n", *site.Name)
+	return &site, nil
+}
+
+// GetSitesWithPagination retrieves sites with pagination and search.
+func (r *PostgresLocationRepository) GetSitesWithPagination(ctx context.Context, page int, limit int, term string) ([]*models.Site, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	query := `SELECT site_id, site_name, site_address FROM sites WHERE site_name ILIKE '%' || $1 || '%' ORDER BY site_name LIMIT $2 OFFSET $3`
+	offset := (page - 1) * limit
+	rows, err := r.db.QueryContext(ctx, query, term, limit, offset)
+	if err != nil {
+		log.Printf("Error querying sites with pagination: %v\n", err)
+		return nil, err
 	}
 	defer rows.Close()
 
-	components := []models.Component{} // Initialize as an empty slice
-
+	var sites []*models.Site
 	for rows.Next() {
-		var component models.Component
-
-		if err := rows.Scan(
-			&component.ComponentID,
-			&component.ComponentID,
-		); err != nil {
-			log.Printf("Error scanning component row: %v\n", err)
-			return []models.Component{}, err
+		var site models.Site
+		if err := rows.Scan(&site.ID, &site.Name, &site.Address); err != nil {
+			log.Printf("Error scanning site row: %v\n", err)
+			return nil, err
 		}
-		components = append(components, component)
+		sites = append(sites, &site)
 	}
 
 	if err := rows.Err(); err != nil {
-		log.Printf("Error iterating component rows: %v\n", err)
-		return []models.Component{}, err
+		log.Printf("Error iterating site rows: %v\n", err)
+		return nil, err
 	}
-
-	return components, nil
+	return sites, nil
 }
 
-// GetDevicesByLocationID retrieves devices associated with a location ID.
-func (r *PostgresLocationRepository) GetDevicesByLocationID(id string) ([]models.Device, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+// CountSites counts the total number of sites.
+func (r *PostgresLocationRepository) CountSites(ctx context.Context, term string) (int, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	query := `SELECT d.device_id, d.status, d.last_seen
-	FROM devices d
-	JOIN device_location dl ON d.device_id = dl.device_id
-	WHERE dl.location_id = $1`
-
-	rows, err := r.db.QueryContext(ctx, query, id)
-	if err != nil {
-		log.Printf("Error getting devices by location ID: %v\n", err)
-		return []models.Device{}, err
+	query := `SELECT COUNT(*) FROM sites WHERE site_name ILIKE '%' || $1 || '%'`
+	var count int
+	if err := r.db.QueryRowContext(ctx, query, term).Scan(&count); err != nil {
+		log.Printf("Error counting sites: %v\n", err)
+		return 0, err
 	}
-	defer rows.Close()
-
-	devices := []models.Device{}
-
-	for rows.Next() {
-		var device models.Device
-
-		if err := rows.Scan(
-			&device.DeviceID,
-			&device.Status,
-			&device.LastSeen,
-		); err != nil {
-			log.Printf("Error scanning device row: %v\n", err)
-			return []models.Device{}, err
-		}
-		devices = append(devices, device)
-	}
-
-	if err := rows.Err(); err != nil {
-		log.Printf("Error iterating device rows: %v\n", err)
-		return []models.Device{}, err
-	}
-
-	return devices, nil
+	return count, nil
 }
+
+// --- Combined/Related Operations ---
 
 // GetLocationsDevicesUsers retrieves locations with associated devices and users.
 func (r *PostgresLocationRepository) GetLocationsDevicesUsers(ctx context.Context, page int, limit int, term string) ([]*models.LocationWithUsersDevices, error) {
@@ -226,11 +263,11 @@ func (r *PostgresLocationRepository) GetLocationsDevicesUsers(ctx context.Contex
 			locationID          *int
 			locationName        *string
 			locationDescription *string
-			deviceID            *string
-			deviceStatus        *string
-			deviceLastSeen      *time.Time
-			userID              *int
-			username            *string
+			deviceID            sql.NullString
+			deviceStatus        sql.NullString
+			deviceLastSeen      sql.NullTime
+			userID              sql.NullInt64
+			username            sql.NullString
 		)
 
 		if err := rows.Scan(
@@ -250,33 +287,32 @@ func (r *PostgresLocationRepository) GetLocationsDevicesUsers(ctx context.Contex
 		if _, ok := locationsMap[*locationID]; !ok {
 			locationsMap[*locationID] = &models.LocationWithUsersDevices{
 				Location: models.Location{
-					ID:          locationID,          // Assign pointer to int
-					Name:        locationName,        // Assign pointer to string
-					Description: locationDescription, // Assign pointer to string
+					ID:          locationID,
+					Name:        locationName,
+					Description: locationDescription,
 				},
-				Devices: []*models.DeviceWithComponents{}, // Initialize with the correct type
+				Devices: []*models.DeviceWithComponents{},
 				Users:   []*models.User{},
 			}
 		}
 
 		location := locationsMap[*locationID]
 
-		if deviceID != nil {
-			location.Devices = append(location.Devices, &models.DeviceWithComponents{ // Use the correct struct
-				Device: &models.Device{
-					DeviceID: *deviceID,       // Assign pointer to int
-					Status:   *deviceStatus,   // Assign pointer to string
-					LastSeen: *deviceLastSeen, // Assign pointer to time.Time
-				},
-				// components field will be nil as it's not fetched in this query
-			})
+		if deviceID.Valid {
+			device := models.Device{
+				DeviceID: deviceID.String,
+				Status:   deviceStatus.String,
+				LastSeen: deviceLastSeen.Time,
+			}
+			location.Devices = append(location.Devices, &models.DeviceWithComponents{Device: &device})
 		}
 
-		if userID != nil {
-			location.Users = append(location.Users, &models.User{
-				ID:   *userID,
-				Name: username,
-			})
+		if userID.Valid {
+			user := models.User{
+				ID:   int(userID.Int64),
+				Name: &username.String,
+			}
+			location.Users = append(location.Users, &user)
 		}
 	}
 
@@ -285,7 +321,7 @@ func (r *PostgresLocationRepository) GetLocationsDevicesUsers(ctx context.Contex
 		return nil, err
 	}
 
-	var locationsSlice []*models.LocationWithUsersDevices
+	locationsSlice := make([]*models.LocationWithUsersDevices, 0, len(locationsMap))
 	for _, loc := range locationsMap {
 		locationsSlice = append(locationsSlice, loc)
 	}
@@ -293,50 +329,73 @@ func (r *PostgresLocationRepository) GetLocationsDevicesUsers(ctx context.Contex
 	return locationsSlice, nil
 }
 
-// CountAll counts all locations in the database.
-func (r *PostgresLocationRepository) CountAll(ctx context.Context, term string) (int, error) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+// GetComponentsByLocationID retrieves components associated with a location ID.
+func (r *PostgresLocationRepository) GetComponentsByLocationID(locationID string) ([]models.Component, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	query := `SELECT COUNT(*) FROM locations WHERE location_name ILIKE '%' || $1 || '%'`
-	var count int
-	err := r.db.QueryRowContext(ctx, query, term).Scan(&count)
+	query := `SELECT
+       c.component_id,
+       c.component_type
+    FROM components c
+    JOIN device_components dc ON c.component_id = dc.component_id
+    JOIN device_location dl ON dc.device_id = dl.device_id
+    WHERE dl.location_id = $1 `
+
+	rows, err := r.db.QueryContext(ctx, query, locationID)
 	if err != nil {
-		log.Printf("Error counting locations: %v\n", err)
-		return 0, err
+		log.Printf("Error getting components by location ID: %v\n", err)
+		return []models.Component{}, err
+	}
+	defer rows.Close()
+
+	components := []models.Component{}
+	for rows.Next() {
+		var component models.Component
+		if err := rows.Scan(&component.ComponentID, &component.ComponentID); err != nil {
+			log.Printf("Error scanning component row: %v\n", err)
+			return []models.Component{}, err
+		}
+		components = append(components, component)
 	}
 
-	return count, nil
+	if err := rows.Err(); err != nil {
+		log.Printf("Error iterating component rows: %v\n", err)
+		return []models.Component{}, err
+	}
+	return components, nil
 }
 
-// DeleteLocation deletes a location by its ID from the database.
-func (r *PostgresLocationRepository) DeleteLocation(ctx context.Context, id string) error {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+// GetDevicesByLocationID retrieves devices associated with a location ID.
+func (r *PostgresLocationRepository) GetDevicesByLocationID(id string) ([]models.Device, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	query := `DELETE FROM locations WHERE location_id = $1`
-	_, err := r.db.ExecContext(ctx, query, id)
+	query := `SELECT d.device_id, d.status, d.last_seen
+    FROM devices d
+    JOIN device_location dl ON d.device_id = dl.device_id
+    WHERE dl.location_id = $1`
+
+	rows, err := r.db.QueryContext(ctx, query, id)
 	if err != nil {
-		log.Printf("Error deleting location with ID %s: %v\n", id, err)
-		return err
+		log.Printf("Error getting devices by location ID: %v\n", err)
+		return []models.Device{}, err
+	}
+	defer rows.Close()
+
+	devices := []models.Device{}
+	for rows.Next() {
+		var device models.Device
+		if err := rows.Scan(&device.DeviceID, &device.Status, &device.LastSeen); err != nil {
+			log.Printf("Error scanning device row: %v\n", err)
+			return []models.Device{}, err
+		}
+		devices = append(devices, device)
 	}
 
-	log.Printf("Location with ID %s deleted from database.\n", id)
-	return nil
-}
-
-// ModifyLocation modifies a location in the database.
-func (r *PostgresLocationRepository) ModifyLocation(ctx context.Context, location models.Location) error {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	query := `UPDATE locations SET location_name = $1, location_description = $2 WHERE location_id = $3`
-	_, err := r.db.ExecContext(ctx, query, location.Name, location.Description, location.ID)
-	if err != nil {
-		log.Printf("Error modifying location with ID %s: %v\n", location.ID, err)
-		return err
+	if err := rows.Err(); err != nil {
+		log.Printf("Error iterating device rows: %v\n", err)
+		return []models.Device{}, err
 	}
-
-	log.Printf("Location with ID %s modified in database.\n", location.ID)
-	return nil
+	return devices, nil
 }

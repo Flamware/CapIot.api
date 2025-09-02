@@ -64,6 +64,7 @@ func (h *AdminHandler) GetAllLocations(writer http.ResponseWriter, request *http
 		http.Error(writer, "Failed to send response", http.StatusInternalServerError)
 	}
 }
+
 func (h *LocationHandler) CreateLocation(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -197,5 +198,115 @@ func (h *LocationHandler) GetAllLocations(writer http.ResponseWriter, request *h
 	if err := json.NewEncoder(writer).Encode(locations); err != nil {
 		log.Printf("Failed to encode response: %v", err)
 		http.Error(writer, "Failed to send response", http.StatusInternalServerError)
+	}
+}
+func (h *LocationHandler) CreateSite(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if r.Header.Get("Content-Type") != "application/json" {
+		http.Error(w, "Unsupported Content-Type", http.StatusUnsupportedMediaType)
+		return
+	}
+
+	var site models.Site
+	if err := json.NewDecoder(r.Body).Decode(&site); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	// Validate input
+	if site.Name == nil || *site.Name == "" {
+		http.Error(w, "Site name is required", http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("Creating site: %+v\n", site)
+
+	// Call service to create site
+	createdSite, err := h.locationService.CreateSite(r.Context(), site)
+	if err != nil {
+		http.Error(w, "Error creating site", http.StatusInternalServerError)
+		return
+	}
+
+	// Send back the created site as a JSON response
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	if err := json.NewEncoder(w).Encode(createdSite); err != nil {
+		http.Error(w, "Failed to write response", http.StatusInternalServerError)
+	}
+}
+
+// DeleteSite handles DELETE requests to remove a site by its ID.
+func (h *LocationHandler) DeleteSite(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	vars := mux.Vars(r)
+	idStr, ok := vars["siteID"]
+	if !ok {
+		http.Error(w, "Missing site ID in path", http.StatusBadRequest)
+		return
+	}
+
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid site ID", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.locationService.DeleteSite(r.Context(), id); err != nil {
+		http.Error(w, "Error deleting site", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent) // 204 No Content
+}
+
+func (h *LocationHandler) GetSitesWithPagination(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Get pagination parameters from query string
+	pageStr := r.URL.Query().Get("page")
+	limitStr := r.URL.Query().Get("limit")
+
+	page := 1
+	limit := 10 // Default page size
+
+	if pageStr != "" {
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			page = p
+		}
+	}
+
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 100 { // Add a reasonable max limit
+			limit = l
+		}
+	}
+
+	// Get the optional search parameter
+	searchTerm := r.URL.Query().Get("search")
+
+	sitesData, err := h.locationService.GetSitesWithPagination(r.Context(), page, limit, searchTerm)
+	if err != nil {
+		log.Printf("Failed to get sites with pagination: %v", err)
+		http.Error(w, "Failed to retrieve data", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(sitesData); err != nil {
+		log.Printf("Failed to encode response: %v", err)
+		http.Error(w, "Failed to send response", http.StatusInternalServerError)
 	}
 }

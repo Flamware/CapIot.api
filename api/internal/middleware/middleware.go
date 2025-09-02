@@ -44,7 +44,6 @@ func JWTAuthMiddleware(next http.Handler) http.Handler {
 			http.Error(w, "Invalid token", http.StatusUnauthorized)
 			return
 		}
-		log.Printf("JWTAuthMiddleware: JWT validation successful, claims: %v", claims)
 
 		// Store the entire claims map in the request context
 		ctx := context.WithValue(r.Context(), UserClaimsContextKey, claims)

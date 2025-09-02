@@ -6,20 +6,19 @@ import (
 	"CapIot-api/internal/repository"
 	"context"
 	"fmt"
-	"log"
 )
 
 // UserService defines the interface for user-related business logic
 type UserService interface {
-	CreateUser(auth0ID, auth0Email string) (int, error)
-	GetUserByID(id int) (*models.User, error)
-	UpdateUser(user models.User) (*models.User, error)
-	DeleteUser(id int) error
-	GetAllUsers() ([]models.User, error)
-	AsignUser(userID, locationID int) error
-	GetUserLocations(userID int) ([]models.Location, error)
-	GetUsersLocations(ctx context.Context, page int, limit int, term string) (map[string]interface{}, error)
-	UpdateUserAndLocation(UserID int, newLocationID []int, newName string) error
+	CreateUser(ctx context.Context, auth0ID, auth0Email string) (int, error)
+	GetUserByID(ctx context.Context, id int) (*models.User, error)
+	UpdateUser(ctx context.Context, user models.User) (*models.User, error)
+	DeleteUser(ctx context.Context, id int) error
+	AsignUser(ctx context.Context, userID, siteID int) error
+	GetUserSites(ctx context.Context, id int) ([]models.Site, error)
+	UpdateUserSites(ctx context.Context, userID int, siteIDs []int, newName string) error
+	GetUsers(ctx context.Context, page int, limit int, term string) (map[string]interface{}, error)
+	GetUserLocations(ctx context.Context, userID int) ([]models.Location, error)
 }
 
 // DefaultUserService is the concrete implementation of the UserService interface
@@ -37,8 +36,9 @@ func NewUserService(userDAO dao.UserDAO, authRepo *repository.AuthRepository) *D
 }
 
 // CreateUser checks if a user with the given Auth0 ID exists, and creates one if not
-func (s *DefaultUserService) CreateUser(auth0ID, auth0Email string) (int, error) {
-	userID, err := s.userDAO.UserExists(auth0ID)
+func (s *DefaultUserService) CreateUser(ctx context.Context, auth0ID, auth0Email string) (int, error) {
+	// The service layer can define its own timeout if it needs to, but we'll pass the context down.
+	userID, err := s.userDAO.UserExists(ctx, auth0ID)
 	if err != nil {
 		return 0, fmt.Errorf("failed to check if user exists: %w", err)
 	}
@@ -47,7 +47,7 @@ func (s *DefaultUserService) CreateUser(auth0ID, auth0Email string) (int, error)
 		return userID, nil
 	}
 
-	userID, err = s.userDAO.CreateUser(auth0ID, auth0Email)
+	userID, err = s.userDAO.CreateUser(ctx, auth0ID, auth0Email)
 	if err != nil {
 		return 0, fmt.Errorf("failed to create user: %w", err)
 	}
@@ -56,77 +56,24 @@ func (s *DefaultUserService) CreateUser(auth0ID, auth0Email string) (int, error)
 }
 
 // GetUserByID retrieves a user by their internal ID
-func (s *DefaultUserService) GetUserByID(id int) (*models.User, error) {
-	user, err := s.userDAO.FindUserByID(id)
+func (s *DefaultUserService) GetUserByID(ctx context.Context, id int) (*models.User, error) {
+	user, err := s.userDAO.FindUserByID(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find user by ID %d: %w", id, err)
 	}
 	return user, nil
 }
 
-// UpdateUser updates an existing user's information
-func (s *DefaultUserService) UpdateUser(user models.User) (*models.User, error) {
-	updatedUser, err := s.userDAO.UpdateUser(user)
+// GetUsers retrieves users with pagination and optional search term
+func (s *DefaultUserService) GetUsers(ctx context.Context, page int, limit int, term string) (map[string]interface{}, error) {
+	users, err := s.userDAO.GetUsers(ctx, limit, (page-1)*limit, term)
 	if err != nil {
-		return nil, fmt.Errorf("failed to update user with ID %d: %w", user.ID, err)
+		return nil, fmt.Errorf("failed to get users with pagination: %w", err)
 	}
-	return updatedUser, nil
-}
 
-// DeleteUser removes a user by their internal ID
-func (s *DefaultUserService) DeleteUser(id int) error {
-	if err := s.userDAO.DeleteUser(id); err != nil {
-		return fmt.Errorf("failed to delete user with ID %d: %w", id, err)
-	}
-	return nil
-}
-
-// GetAllUsers retrieves all users
-func (s *DefaultUserService) GetAllUsers() ([]models.User, error) {
-	users, err := s.userDAO.GetAllUsers()
+	totalUsers, err := s.userDAO.CountAll(ctx, term)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get all users: %w", err)
-	}
-	return users, nil
-}
-
-// AsignUser assigns a user to a location
-func (s *DefaultUserService) AsignUser(userID, locationID int) error {
-	if err := s.userDAO.AsignUser(userID, locationID); err != nil {
-		return fmt.Errorf("failed to assign user with ID %d to location with ID %d: %w", userID, locationID, err)
-	}
-	return nil
-}
-
-// GetUsersLocations retrieves users and their locations
-func (s *DefaultUserService) GetUsersLocations(ctx context.Context, page int, limit int, term string) (map[string]interface{}, error) {
-	log.Printf("GetUsersLocations called with page: %d, limit: %d, search: '%s'", page, limit, term)
-
-	// Calculate offset
-	offset := (page - 1) * limit
-
-	// Fetch paginated and filtered data from the repository
-	users, err := s.userDAO.FindAllWithLocations(ctx, limit, offset, term)
-	if err != nil {
-		log.Printf("Error fetching paginated and filtered data: %v", err)
-		return nil, err
-	}
-	// for each user, append the role based on Auth0ID using GetUserRoles in authRepo
-	for _, user := range users {
-		roles, err := s.authRepo.GetUserRolesByAuth0ID(user.Auth0ID)
-		if err != nil {
-			log.Printf("Error fetching roles for user %s: %v", user.Auth0ID, err)
-			return nil, err
-		}
-		user.Role = roles
-		log.Printf("User %s has roles: %v", user.Auth0ID, roles)
-	}
-
-	// Fetch total count of items based on the search criteria
-	totalUsers, err := s.userDAO.CountAll(ctx, term) // Update CountAll to accept search
-	if err != nil {
-		log.Printf("Error fetching total count with search: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to count users: %w", err)
 	}
 
 	totalPages := (totalUsers + limit - 1) / limit
@@ -142,26 +89,59 @@ func (s *DefaultUserService) GetUsersLocations(ctx context.Context, page int, li
 	return response, nil
 }
 
+// UpdateUser updates an existing user's information
+func (s *DefaultUserService) UpdateUser(ctx context.Context, user models.User) (*models.User, error) {
+	updatedUser, err := s.userDAO.UpdateUser(ctx, user)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update user with ID %d: %w", user.ID, err)
+	}
+	return updatedUser, nil
+}
+
+// DeleteUser removes a user by their internal ID
+func (s *DefaultUserService) DeleteUser(ctx context.Context, id int) error {
+	if err := s.userDAO.DeleteUser(ctx, id); err != nil {
+		return fmt.Errorf("failed to delete user with ID %d: %w", id, err)
+	}
+	return nil
+}
+
+// AsignUser assigns a user to a site
+func (s *DefaultUserService) AsignUser(ctx context.Context, userID, siteID int) error {
+	if err := s.userDAO.AsignUser(ctx, userID, siteID); err != nil {
+		return fmt.Errorf("failed to assign user with ID %d to site with ID %d: %w", userID, siteID, err)
+	}
+	return nil
+}
+
 // GetUserLocations retrieves all locations assigned to a user
-func (s *DefaultUserService) GetUserLocations(userID int) ([]models.Location, error) {
-	locations, err := s.userDAO.GetUserLocations(userID)
+func (s *DefaultUserService) GetUserLocations(ctx context.Context, userID int) ([]models.Location, error) {
+	locations, err := s.userDAO.GetUserLocations(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get locations for user with ID %d: %w", userID, err)
 	}
 	return locations, nil
 }
 
-// updateUserAndLocation updates the user's location and name
-func (s *DefaultUserService) UpdateUserAndLocation(UserID int, newLocationID []int, newName string) error {
-	// Update the user's location
-	if err := s.userDAO.UpdateUserLocation(UserID, newLocationID); err != nil {
-		return fmt.Errorf("failed to update user location: %w", err)
+// UpdateUserSites updates the user's name and assigned sites.
+func (s *DefaultUserService) UpdateUserSites(ctx context.Context, userID int, siteIDs []int, newName string) error {
+	// Use a single context for the transaction
+	if err := s.userDAO.UpdateUserSites(ctx, userID, siteIDs); err != nil {
+		return fmt.Errorf("failed to update user sites: %w", err)
 	}
 
-	// Update the user's name
-	if err := s.userDAO.UpdateUserName(UserID, newName); err != nil {
+	if err := s.userDAO.UpdateUserName(ctx, userID, newName); err != nil {
 		return fmt.Errorf("failed to update user name: %w", err)
 	}
 
 	return nil
+}
+
+// GetUserSites retrieves all sites associated with a user
+func (s *DefaultUserService) GetUserSites(ctx context.Context, id int) ([]models.Site, error) {
+	sites, err := s.userDAO.GetUserSites(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get sites for user with ID %d: %w", id, err)
+	}
+	return sites, nil
 }

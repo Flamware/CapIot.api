@@ -12,14 +12,14 @@ import (
 
 // AuthService interface (define this in internal/service/auth_service.go)
 type AuthService interface {
-	Login(email, password string) (string, error)
-	Register(email, password string) error
+	Login(ctx context.Context, email, password string) (string, error)
+	Register(ctx context.Context, email, password string) error
 	GetUserRoles(ctx context.Context, userID string) ([]string, error)
 }
 
 // DefaultAuthService handles the business logic for user authentication
 type DefaultAuthService struct {
-	authRepo   *repository.AuthRepository // Hold a pointer
+	authRepo   *repository.AuthRepository
 	userRepo   dao.UserDAO
 	deviceRepo dao.DeviceDAO
 }
@@ -41,7 +41,8 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
-func (s *DefaultAuthService) Login(email, password string) (string, error) {
+// Login authenticates a user and generates a JWT token.
+func (s *DefaultAuthService) Login(ctx context.Context, email, password string) (string, error) {
 	// Step 1: Authenticate with Auth0 and get user info with roles
 	authResult, err := s.authRepo.AuthenticateWithAuth0(email, password)
 	if err != nil {
@@ -49,52 +50,47 @@ func (s *DefaultAuthService) Login(email, password string) (string, error) {
 	}
 
 	// Step 2: Check if user exists in the database
-	userID, err := s.userRepo.UserExists(authResult.Auth0ID)
+	userID, err := s.userRepo.UserExists(ctx, authResult.Auth0ID)
 	if err != nil {
-		// If there is any error other than sql.ErrNoRows, return it
 		return "", fmt.Errorf("failed to check user existence: %w", err)
 	}
 
-	// Check user role (already done in AuthenticateWithAuth0)
 	log.Printf("User %s authenticated with roles: %v", authResult.Email, authResult.Role)
+
+	// Check if the user does not exist in the database and create them
+	if userID == 0 {
+		log.Printf("User with email %s not found, creating new user.", email)
+		userID, err = s.userRepo.CreateUser(ctx, authResult.Auth0ID, authResult.Email)
+		if err != nil {
+			return "", fmt.Errorf("failed to create user: %w", err)
+		}
+		log.Printf("New user created with Auth0 ID: %s and User ID: %d", authResult.Auth0ID, userID)
+	} else {
+		log.Printf("User found in the database: %s with User ID: %d", authResult.Auth0ID, userID)
+	}
+
 	// Look for user's locations
-	locations, err := s.userRepo.GetUserLocations(userID)
+	locations, err := s.userRepo.GetUserLocations(ctx, userID)
 	if err != nil {
 		return "", fmt.Errorf("failed to get user locations: %w", err)
 	}
 
-	// Extract location IDs
+	// Extract location IDs safely
 	locationIDs := make([]int, len(locations))
 	for i, location := range locations {
 		if location.ID != nil {
 			locationIDs[i] = *location.ID // Dereference the pointer to get the int value
 		} else {
-			log.Printf("Location ID is nil for user %d", userID)
+			// It's good practice to handle the case of a nil pointer, though this
+			// indicates a potential data integrity issue.
+			log.Printf("Location ID is nil for user %d at index %d", userID, i)
 		}
 	}
 
-	// Check if the user does not exist in the database
-	if userID == 0 {
-		log.Printf("User with email %s not found, creating new user.", email)
-
-		// Create a new user with the Auth0 ID and email
-		userID, err = s.userRepo.CreateUser(authResult.Auth0ID, authResult.Email)
-		if err != nil {
-			return "", fmt.Errorf("failed to create user: %w", err)
-		}
-
-		// Log the creation of the user
-		log.Printf("New user created with Auth0 ID: %s and User ID: %d", authResult.Auth0ID, userID)
+	if len(locationIDs) == 0 {
+		log.Printf("No locations found for user %d", userID)
 	} else {
-		// Log if user is found in the database
-		log.Printf("User found in the database: %s with User ID: %d", authResult.Auth0ID, userID)
-
-		if len(locationIDs) == 0 {
-
-			log.Printf("No locations found for user %d", userID)
-		} else {
-			log.Printf("User %d has access to locations: %v", userID, locationIDs)
-		}
+		log.Printf("User %d has access to locations: %v", userID, locationIDs)
 	}
 
 	// Step 3: Generate the custom JWT token, including roles
@@ -107,7 +103,7 @@ func (s *DefaultAuthService) Login(email, password string) (string, error) {
 }
 
 // Register handles user registration
-func (s *DefaultAuthService) Register(email, password string) error {
+func (s *DefaultAuthService) Register(ctx context.Context, email, password string) error {
 	// Step 1: Register with Auth0
 	auth0ID, err := s.authRepo.RegisterWithAuth0(email, password)
 	if err != nil {
@@ -115,7 +111,7 @@ func (s *DefaultAuthService) Register(email, password string) error {
 	}
 
 	// Step 2: Create a new user in the database
-	_, err = s.userRepo.CreateUser(auth0ID, email)
+	_, err = s.userRepo.CreateUser(ctx, auth0ID, email)
 	if err != nil {
 		return fmt.Errorf("failed to create user: %w", err)
 	}

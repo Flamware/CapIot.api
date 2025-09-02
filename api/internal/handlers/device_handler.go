@@ -57,7 +57,19 @@ func (h *DeviceHandler) DeleteDevice(writer http.ResponseWriter, request *http.R
 
 	log.Printf("Attempting to delete device with ID: %s", deviceID)
 
-	if err := h.deviceService.DeleteDevice(request.Context(), deviceID); err != nil {
+	// Begin transaction
+	tx, err := h.deviceService.BeginTransaction()
+	if err != nil {
+		utils.RespondWithError(writer, http.StatusInternalServerError, "Error starting transaction",
+			map[string]string{"error": err.Error()})
+		return
+	}
+
+	// THIS IS THE CRITICAL LINE. Defer a rollback in case of an error.
+	defer tx.Rollback()
+
+	// Pass the transaction to the DeleteDevice method
+	if err := h.deviceService.DeleteDevice(tx, deviceID); err != nil {
 		log.Printf("Failed to delete device '%s': %v", deviceID, err)
 		if apiErr, ok := err.(*models.APIError); ok {
 			utils.RespondWithError(writer, apiErr.StatusCode, apiErr.Message, apiErr.Details)
@@ -67,9 +79,15 @@ func (h *DeviceHandler) DeleteDevice(writer http.ResponseWriter, request *http.R
 		return
 	}
 
-	writer.WriteHeader(http.StatusNoContent) // Standard response for successful deletion with no body
-}
+	// Commit the transaction only if all operations were successful
+	if err := tx.Commit(); err != nil {
+		utils.RespondWithError(writer, http.StatusInternalServerError, "Error committing transaction",
+			map[string]string{"error": err.Error()})
+		return
+	}
 
+	writer.WriteHeader(http.StatusNoContent)
+}
 func (h *DeviceHandler) GetDeviceByID(writer http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodGet {
 		utils.RespondWithError(writer, http.StatusMethodNotAllowed, "Method not allowed", nil)

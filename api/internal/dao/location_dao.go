@@ -16,4 +16,8 @@ type LocationDAO interface {
 	CountAll(ctx context.Context, term string) (int, error)
 	DeleteLocation(ctx context.Context, id string) error
 	ModifyLocation(ctx context.Context, location models.Location) error
+	CreateSite(ctx context.Context, site models.Site) (*models.Site, error)
+	GetSitesWithPagination(ctx context.Context, page int, limit int, term string) ([]*models.Site, error)
+	CountSites(ctx context.Context, term string) (int, error)
+	DeleteSite(ctx context.Context, id int64) error
 }

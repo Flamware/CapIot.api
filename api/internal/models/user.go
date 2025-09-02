@@ -25,7 +25,7 @@ func NewUser(auth0ID, email, password string, role []string) *User {
 }
 
 // UsersLocations
-type UserLocations struct {
+type UserSites struct {
 	User
-	Locations []*Location `json:"locations,omitempty"` // List of locations associated with the user
+	Sites []*Site `json:"sites,omitempty"` // List of locations associated with the user
 }

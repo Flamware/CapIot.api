@@ -7,17 +7,17 @@ import (
 
 // UserDAO defines the interface for user data access.
 type UserDAO interface {
-	CreateUser(auth0_id string, auth0_email string) (int, error)
-	UserExists(auth0_id string) (int, error)
-	FindUserByID(userID int) (*models.User, error)
-	UpdateUser(user models.User) (*models.User, error)
-	DeleteUser(userID int) error
-	GetUserByEmail(email string) (*models.User, error)
-	GetAllUsers() ([]models.User, error) // Update the return type to include error
-	AsignUser(userID, locationID int) error
-	GetUserLocations(userID int) ([]models.Location, error)
-	FindAllWithLocations(ctx context.Context, limit int, offset int, search string) ([]*models.UserLocations, error)
+	CreateUser(ctx context.Context, auth0_id string, auth0_email string) (int, error)
+	UserExists(ctx context.Context, auth0_id string) (int, error)
+	FindUserByID(ctx context.Context, userID int) (*models.User, error)
+	UpdateUser(ctx context.Context, user models.User) (*models.User, error)
+	DeleteUser(ctx context.Context, userID int) error
+	GetUserByEmail(ctx context.Context, email string) (*models.User, error)
+	AsignUser(ctx context.Context, userID, siteID int) error
 	CountAll(ctx context.Context, search string) (int, error)
-	UpdateUserLocation(id int, id2 []int) error
-	UpdateUserName(id int, name string) error
+	UpdateUserName(ctx context.Context, id int, name string) error
+	GetUserSites(ctx context.Context, id int) ([]models.Site, error)
+	GetUsers(ctx context.Context, limit int, offset int, term string) ([]*models.User, error)
+	UpdateUserSites(ctx context.Context, userID int, siteIDs []int) error
+	GetUserLocations(ctx context.Context, userID int) ([]models.Location, error)
 }

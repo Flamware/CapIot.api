@@ -14,9 +14,6 @@ func SetupUserRoutes(r *mux.Router, userHandler *handlers.UserHandler) {
 		w.Write([]byte("This is a location endpoint"))
 	})
 
-	// Get all users endpoint
-	r.Handle("/api/users", middleware.JWTAuthMiddleware(http.HandlerFunc(userHandler.GetAllUsers))).Methods(http.MethodGet)
-
 	// Get current user
 	r.Handle("/api/users/me", middleware.JWTAuthMiddleware(http.HandlerFunc(userHandler.GetCurrentUser))).Methods(http.MethodGet)
 

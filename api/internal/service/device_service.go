@@ -1,6 +1,7 @@
 package service
 
 import (
+	"CapIot-api/internal/dao"
 	"CapIot-api/internal/models"
 	"CapIot-api/internal/repository"
 	"context"
@@ -29,7 +30,7 @@ type DeviceService interface {
 	GetDeviceByID(id string) (*models.Device, error)                                                                     // Read-only, no tx
 	GetAllDevices() ([]*models.Device, error)                                                                            // Read-only, no tx
 	GetUnassignedDevices() ([]*models.Device, error)                                                                     // Read-only, no tx
-	DeleteDevice(ctx context.Context, id string) error                                                                   // No tx here, but DAO method might take it
+	DeleteDevice(tx *sql.Tx, id string) error                                                                            // No tx here, but DAO method might take it
 	UnassignDeviceFromLocation(tx *sql.Tx, id string) error                                                              // Updated to take tx
 	GetLocationByDeviceID(id string) (*models.Location, error)                                                           // Read-only, no tx
 	GetDevicescomponentsLocations(ctx context.Context, page int, limit int, term string) (map[string]interface{}, error) // Read-only, no tx
@@ -56,7 +57,7 @@ type DeviceService interface {
 
 // DefaultDeviceService implements the DeviceService interface
 type DefaultDeviceService struct {
-	deviceDAO           repository.DeviceDAO
+	deviceDAO           dao.DeviceDAO
 	MqttConfigPublisher MqttConfigPublisher // Inject the MQTT publisher here
 }
 
@@ -114,7 +115,7 @@ func (s *DefaultDeviceService) GetUnassignedDevices() ([]*models.Device, error) 
 	return unassignedDevices, nil
 }
 
-func (s *DefaultDeviceService) DeleteDevice(ctx context.Context, id string) error {
+func (s *DefaultDeviceService) DeleteDevice(ctx *sql.Tx, id string) error {
 	existingDevice, err := s.deviceDAO.GetDeviceByID(id)
 	if err != nil {
 		return fmt.Errorf("error retrieving device '%s': %w", id, err)

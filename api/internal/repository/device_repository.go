@@ -9,44 +9,6 @@ import (
 	"time" // Added for time.Now()
 )
 
-// DeviceDAO defines the interface for all device and related data access operations.
-type DeviceDAO interface {
-	BeginTransaction() (*sql.Tx, error)
-
-	// Device Operations
-	CreateDevice(tx *sql.Tx, device *models.Device) error // Updated to take tx
-	DeviceExists(deviceID string) (bool, error)
-	GetDeviceByID(id string) (*models.Device, error)
-	UpdateDeviceLastSeenAndStatus(tx *sql.Tx, deviceID string, status models.OperationalStatus) error // Updated to take tx
-	UpdateDeviceOperationalStatus(tx *sql.Tx, id string, status models.OperationalStatus) error       // Updated to take tx
-	GetAllDevices() ([]*models.Device, error)
-	GetUnassignedDevices() ([]*models.Device, error)
-	DeleteDevice(ctx context.Context, id string) error // Updated to take tx
-	GetLocationByDeviceID(id string) (*models.Location, error)
-	UnassignDeviceFromLocation(tx *sql.Tx, id string) error // Updated to take tx
-	FindAllWithcomponentsAndLocations(ctx context.Context, limit int, offset int, search string) ([]*models.DeviceWithComponentsAndLocation, error)
-	CountAll(ctx context.Context, search string) (int, error)
-	SetDeviceToLocation(ctx context.Context, id string, id2 int) error
-
-	// Component Operations
-	CreateComponent(tx *sql.Tx, component *models.Component) (*models.Component, error) // Updated to take tx
-	GetComponentByID(id string) (*models.Component, error)
-	LinkComponentToDevice(tx *sql.Tx, deviceID string, componentID string) error // Updated to take tx
-	UpdateComponentRange(tx *sql.Tx, component *models.Component) error          // Updated to take tx
-	UpdateComponentStatus(tx *sql.Tx, id string, status string) error            // Updated to take tx
-	GetcomponentsByDeviceID(id string) ([]*models.Component, error)
-
-	// Log Operations
-	HandleDeviceAlert(tx *sql.Tx, componentID string, message string) error // Updated to take tx
-	GetcomponentLogsByComponentID(id string) ([]*models.ComponentLog, error)
-	GetcomponentLogsByDeviceIDAndComponentID(deviceID string, ComponentID string) ([]*models.ComponentLog, error)
-	GetDeviceLogsByDeviceID(deviceID string) ([]*models.ComponentLog, error)
-	GetAllLogsByUser(userID int) ([]*models.ComponentLog, error)
-	UserHasAccessTocomponent(userID int, ComponentID string) (bool, error)
-	MarkcomponentLogsAsRead(tx *sql.Tx, ComponentID string, logIds []int) error // Updated to take tx
-	MarkAllLogsAsRead(tx *sql.Tx, userID int) error                             // Updated to take tx
-}
-
 // PostgresDeviceDAO implements the DeviceDAO interface using PostgreSQL.
 type PostgresDeviceDAO struct {
 	db *sql.DB
@@ -183,11 +145,8 @@ func (d *PostgresDeviceDAO) GetUnassignedDevices() ([]*models.Device, error) {
 }
 
 // DeleteDevice deletes a device by its ID within a transaction.
-func (d *PostgresDeviceDAO) DeleteDevice(context context.Context, id string) error {
-	executor := d.getExecutor(context.Value("tx").(*sql.Tx)) // Assuming tx is passed via context
-	if executor == nil {
-		executor = d.db
-	}
+func (d *PostgresDeviceDAO) DeleteDevice(tx *sql.Tx, id string) error {
+	executor := d.getExecutor(tx)
 	_, err := executor.Exec("DELETE FROM devices WHERE device_id = $1", id)
 	if err != nil {
 		return fmt.Errorf("failed to delete device %s: %w", id, err)
@@ -226,10 +185,10 @@ func (d *PostgresDeviceDAO) SetDeviceToLocation(ctx context.Context, deviceID st
 
 	// Then, insert the new assignment or update an existing one to be current
 	insertQuery := `
-		INSERT INTO public.device_location (device_id, location_id, assignment_date, is_current)
+		INSERT INTO public.device_location (device_id, location_id, assigned_at, is_current)
 		VALUES ($1, $2, $3, TRUE)
 		ON CONFLICT (device_id, location_id) DO UPDATE
-		SET assignment_date = $3, is_current = TRUE
+		SET assigned_at = $3, is_current = TRUE
 	`
 	_, err = executor.Exec(insertQuery, deviceID, locationID, time.Now())
 	if err != nil {
@@ -698,7 +657,9 @@ func (d *PostgresDeviceDAO) GetAllLogsByUser(userID int) ([]*models.ComponentLog
         FROM component_log sl
         JOIN device_components ds ON sl.component_id = ds.component_id
         JOIN device_location dl ON ds.device_id = dl.device_id AND dl.is_current = true
-        JOIN user_location ul ON ul.user_id = $1 AND ul.location_id = dl.location_id
+        JOIN locations l ON dl.location_id = l.location_id
+        JOIN user_site us ON l.site_id = us.site_id
+        WHERE us.user_id = $1
     `, userID)
 
 	if err != nil {
@@ -719,16 +680,16 @@ func (d *PostgresDeviceDAO) GetAllLogsByUser(userID int) ([]*models.ComponentLog
 	}
 	return logs, nil
 }
-
-// UserHasAccessTocomponent checks if a user has access to a specific component.
 func (d *PostgresDeviceDAO) UserHasAccessTocomponent(userID int, ComponentID string) (bool, error) {
 	query := `
        SELECT EXISTS (
           SELECT 1
-          FROM device_components ds
-          JOIN device_location dl ON ds.device_id = dl.device_id AND dl.is_current = true
-          JOIN user_location ul ON dl.location_id = ul.location_id
-          WHERE ul.user_id = $1 AND ds.component_id = $2
+          FROM device_components AS dc
+          JOIN devices AS d ON dc.device_id = d.device_id
+          JOIN device_location AS dl ON d.device_id = dl.device_id AND dl.is_current = TRUE
+          JOIN locations AS l ON dl.location_id = l.location_id
+          JOIN user_site AS us ON l.site_id = us.site_id
+          WHERE us.user_id = $1 AND dc.component_id = $2
        )
     `
 	var hasAccess bool
@@ -771,12 +732,13 @@ func (d *PostgresDeviceDAO) MarkcomponentLogsAsRead(tx *sql.Tx, ComponentID stri
 func (d *PostgresDeviceDAO) MarkAllLogsAsRead(tx *sql.Tx, userID int) error {
 	executor := d.getExecutor(tx)
 	query := `
-       UPDATE component_log sl
+       UPDATE component_log AS cl
        SET log_read = TRUE
-       FROM device_components ds
-       JOIN device_location dl ON ds.device_id = dl.device_id AND dl.is_current = true
-       JOIN user_location ul ON dl.location_id = ul.location_id
-       WHERE ul.user_id = $1 AND sl.component_id = ds.component_id
+       FROM device_components AS dc
+       JOIN device_location AS dl ON dc.device_id = dl.device_id AND dl.is_current = TRUE
+       JOIN locations AS l ON dl.location_id = l.location_id
+       JOIN user_site AS us ON l.site_id = us.site_id
+       WHERE us.user_id = $1 AND cl.component_id = dc.component_id
     `
 	_, err := executor.Exec(query, userID)
 	if err != nil {
