@@ -52,7 +52,8 @@ type DeviceService interface {
 	GetAllLogsByUser(userId int) ([]*models.ComponentLog, error)                                    // Read-only, no tx
 	UserHasAccessTocomponent(id int, id2 string) (bool, error)                                      // Read-only, no tx
 	MarkcomponentLogsAsRead(tx *sql.Tx, ComponentID string, logIds []int) error                     // Updated to take tx
-	MarkAllLogsAsRead(tx *sql.Tx, userID int) error                                                 // Updated to take tx
+	MarkAllLogsAsRead(tx *sql.Tx, userID int) error
+	UpdateComponentRunningHours(tx *sql.Tx, id string, hours int32) error // Updated to take tx
 }
 
 // DefaultDeviceService implements the DeviceService interface
@@ -149,7 +150,7 @@ func (s *DefaultDeviceService) GetLocationByDeviceID(id string) (*models.Locatio
 func (s *DefaultDeviceService) GetDevicescomponentsLocations(ctx context.Context, page int, limit int, search string) (map[string]interface{}, error) {
 	log.Printf("GetDevicescomponentsLocations called with page: %d, limit: %d, search: '%s'", page, limit, search)
 	offset := (page - 1) * limit
-	devices, err := s.deviceDAO.FindAllWithcomponentsAndLocations(ctx, limit, offset, search)
+	devices, err := s.deviceDAO.FindAllWithComponentsAndLocations(ctx, limit, offset, search)
 	if err != nil {
 		log.Printf("Error fetching paginated and filtered data: %v", err)
 		return nil, err
@@ -399,5 +400,18 @@ func (s *DefaultDeviceService) MarkAllLogsAsRead(tx *sql.Tx, userId int) error {
 		return fmt.Errorf("error marking all logs as read for User ID '%d': %w", userId, err)
 	}
 	log.Printf("Successfully marked all logs as read for User ID: '%d'", userId)
+	return nil
+}
+
+func (s *DefaultDeviceService) UpdateComponentRunningHours(tx *sql.Tx, id string, hours int32) error {
+	log.Printf("Updating running hours for component ID: '%s' to hours: '%d' within transaction.", id, hours)
+	if strings.TrimSpace(id) == "" || hours < 0 {
+		return fmt.Errorf("component ID cannot be empty and hours must be non-negative")
+	}
+	err := s.deviceDAO.UpdateComponentRunningHours(tx, id, hours) // Pass the transaction
+	if err != nil {
+		return fmt.Errorf("error updating running hours for component ID '%s': %w", id, err)
+	}
+	log.Printf("Successfully updated running hours for component ID: '%s' to hours: '%d' within transaction.", id, hours)
 	return nil
 }

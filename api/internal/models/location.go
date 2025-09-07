@@ -15,6 +15,11 @@ type Location struct {
 	SiteID      *int    `json:"site_id"`
 }
 
+type LocationWithSite struct {
+	Location
+	SiteName *string `json:"site_name"`
+}
+
 // NewLocation creates a new Location instance with the provided details.
 func NewLocation(name, description string, siteID int, siteName string) *Location {
 	return &Location{

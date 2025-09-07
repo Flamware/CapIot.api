@@ -5,6 +5,7 @@ import (
 	"CapIot-api/internal/models"
 	"context"
 	"log"
+	"strconv"
 )
 
 type DefaultLocationService struct {
@@ -22,6 +23,9 @@ type LocationService interface {
 	CreateSite(ctx context.Context, site models.Site) (*models.Site, error)
 	GetSitesWithPagination(ctx context.Context, page int, limit int, term string) (map[string]interface{}, error)
 	DeleteSite(ctx context.Context, id int64) error
+	GetLocationsBySiteIDs(ctx context.Context, siteIDs []string, userID int64, page int, limit int, term string) (map[string]interface{}, error)
+	CheckUserAccessToLocation(userID int64, locationID string) (bool, error)
+	CheckUserAccessToSite(userID int64, siteID int64) (bool, error)
 }
 
 func NewLocationService(dao dao.LocationDAO) *DefaultLocationService {
@@ -31,6 +35,14 @@ func NewLocationService(dao dao.LocationDAO) *DefaultLocationService {
 func (s *DefaultLocationService) CreateLocation(location models.Location) error {
 	log.Printf("CreateLocation called with location: %+v", location)
 	return s.dao.InsertLocation(location)
+}
+
+func (s *DefaultLocationService) CheckUserAccessToLocation(userID int64, locationID string) (bool, error) {
+	return s.dao.CheckUserAccessToLocation(userID, locationID)
+}
+
+func (s *DefaultLocationService) CheckUserAccessToSite(userID int64, siteID int64) (bool, error) {
+	return s.dao.CheckUserAccessToSite(userID, siteID)
 }
 
 func (s *DefaultLocationService) GetAllLocations(ctx context.Context, page int, limit int, term string) (map[string]interface{}, error) {
@@ -192,5 +204,61 @@ func (s *DefaultLocationService) GetSitesWithPagination(ctx context.Context, pag
 		"totalPages":  totalPages,
 	}
 
+	return response, nil
+}
+
+func (s *DefaultLocationService) GetLocationsBySiteIDs(ctx context.Context, siteIDs []string, userID int64, page int, limit int, term string) (map[string]interface{}, error) {
+	log.Printf("GetLocationsBySiteIDs called with siteIDs: %v, userID: %d, page: %d, limit: %d", siteIDs, userID, page, limit)
+
+	// Filter siteIDs based on user access
+	var accessibleSiteIDs []string
+	for _, siteIDStr := range siteIDs {
+		siteID, err := strconv.ParseInt(siteIDStr, 10, 64)
+		if err != nil {
+			log.Printf("Invalid site ID: %s", siteIDStr)
+			continue
+		}
+
+		hasAccess, err := s.dao.CheckUserAccessToSite(userID, siteID)
+		if err != nil {
+			log.Printf("Error checking access for user %d to site %d: %v", userID, siteID, err)
+			continue
+		}
+
+		if hasAccess {
+			accessibleSiteIDs = append(accessibleSiteIDs, siteIDStr)
+		}
+	}
+
+	if len(accessibleSiteIDs) == 0 {
+		log.Printf("No accessible sites found for user %d", userID)
+		return map[string]interface{}{
+			"data":        []models.Location{},
+			"currentPage": page,
+			"pageSize":    limit,
+			"totalItems":  0,
+			"totalPages":  0,
+		}, nil
+	}
+
+	locations, err := s.dao.GetLocationsBySiteIDs(ctx, accessibleSiteIDs, page, limit, term)
+	if err != nil {
+		log.Printf("Error fetching locations by site IDs: %v", err)
+		return nil, err
+	}
+	// Fetch total count of items based on the accessible site IDs
+	totalLocations, err := s.dao.CountAll(ctx, "") // You might want to implement a more specific count method
+	if err != nil {
+		log.Printf("Error fetching total count of locations: %v", err)
+		return nil, err
+	}
+	totalPages := (totalLocations + limit - 1) / limit
+	response := map[string]interface{}{
+		"data":        locations,
+		"currentPage": page,
+		"pageSize":    limit,
+		"totalItems":  totalLocations,
+		"totalPages":  totalPages,
+	}
 	return response, nil
 }

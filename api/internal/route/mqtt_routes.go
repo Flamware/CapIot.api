@@ -28,6 +28,10 @@ func SetupMQTTRoutes(client mqtt.Client, mqttHandler *handlers.MqttHandler) {
 	if token := client.Subscribe(alertTopic, 1, mqttHandler.HandleDeviceAlert); token.Wait() && token.Error() != nil {
 		log.Fatalf("Error subscribing to alert topic: %v", token.Error())
 	}
-	log.Printf("Subscribed to topic: %s\n", alertTopic)
 
+	// Subscribe to running_hours topic
+	runningHoursTopic := "devices/running_hours/+"
+	if token := client.Subscribe(runningHoursTopic, 1, mqttHandler.HandleRunningHours); token.Wait() && token.Error() != nil {
+		log.Fatalf("Error subscribing to running hours topic: %v", token.Error())
+	}
 }

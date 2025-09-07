@@ -46,6 +46,8 @@ CREATE TABLE IF NOT EXISTS public.locations (
                                                 CONSTRAINT fk_site FOREIGN KEY (site_id) REFERENCES public.sites(site_id) ON DELETE CASCADE
     );
 
+-- Création de la table des composants
+-- Correction : Ajout d'une virgule après la colonne max_running_hours
 CREATE TABLE IF NOT EXISTS public.components (
                                                  component_id TEXT PRIMARY KEY, -- Identifiant unique pour CHAQUE composant physique
                                                  component_name VARCHAR(255) NOT NULL, -- Nom générique du modèle de composant
@@ -54,7 +56,8 @@ CREATE TABLE IF NOT EXISTS public.components (
     component_status VARCHAR(50),
     min_threshold NUMERIC(10, 2),
     max_threshold NUMERIC(10, 2),
-    max_running_hours INTEGER
+    max_running_hours INTEGER,
+    current_running_hours INTEGER DEFAULT 0
     );
 
 -- ====================================================================================================
@@ -73,13 +76,13 @@ CREATE TABLE IF NOT EXISTS public.user_site (
     );
 
 -- Création de la table device_location pour suivre les emplacements actuels et historiques d'un appareil
+-- Correction : Suppression d'une contrainte d'unicité redondante.
 CREATE TABLE IF NOT EXISTS public.device_location (
                                                       id SERIAL PRIMARY KEY,
                                                       device_id TEXT,
                                                       location_id INTEGER,
                                                       assigned_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now(),
     is_current BOOLEAN DEFAULT true,
-    CONSTRAINT device_location_device_id_location_id_key UNIQUE (device_id, location_id),
     CONSTRAINT unique_device_location UNIQUE (device_id, location_id),
     CONSTRAINT device_location_device_id_fkey FOREIGN KEY (device_id) REFERENCES public.devices(device_id) ON DELETE CASCADE,
     CONSTRAINT device_location_location_id_fkey FOREIGN KEY (location_id) REFERENCES public.locations(location_id) ON DELETE CASCADE

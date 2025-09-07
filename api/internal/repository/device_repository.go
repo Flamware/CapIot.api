@@ -217,93 +217,99 @@ func (d *PostgresDeviceDAO) GetLocationByDeviceID(id string) (*models.Location, 
 	return &location, nil
 }
 
-// FindAllWithcomponentsAndLocations retrieves devices with their components and locations.
-func (d *PostgresDeviceDAO) FindAllWithcomponentsAndLocations(ctx context.Context, limit int, offset int, search string) ([]*models.DeviceWithComponentsAndLocation, error) {
-	var devicesWithInfo []*models.DeviceWithComponentsAndLocation
-	var query strings.Builder
-	args := []interface{}{limit, offset}
-	argCount := 3
+// FindAllWithComponentsAndLocations retrieves devices with their components, locations, and site names.
+func (d *PostgresDeviceDAO) FindAllWithComponentsAndLocations(
+	ctx context.Context,
+	limit int,
+	offset int,
+	search string,
+) ([]*models.DeviceWithComponentsAndLocation, error) {
+	query := `
+		SELECT
+			d.device_id, d.last_seen, d.status, d.created_at,
+			l.location_id, l.location_name, l.location_description, l.site_id,
+			s.site_name
+		FROM devices d
+		LEFT JOIN device_location dl ON d.device_id = dl.device_id AND dl.is_current = true
+		LEFT JOIN locations l ON dl.location_id = l.location_id
+		LEFT JOIN sites s ON l.site_id = s.site_id
+	`
+	args := []interface{}{}
+	argIndex := 1
 
-	query.WriteString(`
-       SELECT
-          d.device_id, d.last_seen, d.status, d.created_at,
-          l.location_id, l.location_name
-       FROM devices d
-       LEFT JOIN device_location dl ON d.device_id = dl.device_id AND dl.is_current = true
-       LEFT JOIN locations l ON dl.location_id = l.location_id
-    `)
-
+	// Add search filter
 	if search != "" {
-		query.WriteString(`
-          WHERE
-             LOWER(d.device_id) LIKE LOWER('%' || $` + fmt.Sprintf("%d", argCount) + ` || '%') OR
-             EXISTS (
-                SELECT 1
-                FROM device_components dc
-                JOIN components c ON dc.component_id = c.component_id
-                WHERE dc.device_id = d.device_id AND LOWER(c.component_type) LIKE LOWER('%' || $` + fmt.Sprintf("%d", argCount) + ` || '%')
-             ) OR
-             LOWER(l.location_name) LIKE LOWER('%' || $` + fmt.Sprintf("%d", argCount) + ` || '%')
-       `)
+		query += fmt.Sprintf(`
+			WHERE LOWER(d.device_id) LIKE LOWER('%%' || $%d || '%%')
+			OR LOWER(l.location_name) LIKE LOWER('%%' || $%d || '%%')
+			OR LOWER(s.site_name) LIKE LOWER('%%' || $%d || '%%')
+		`, argIndex, argIndex, argIndex)
 		args = append(args, search)
-		argCount++
+		argIndex++
 	}
 
-	query.WriteString(`
-       LIMIT $1
-       OFFSET $2
-    `)
+	// Add pagination
+	query += fmt.Sprintf(" ORDER BY d.device_id LIMIT $%d OFFSET $%d", argIndex, argIndex+1)
+	args = append(args, limit, offset)
 
-	rows, err := d.db.QueryContext(ctx, query.String(), args...)
+	rows, err := d.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("query for devices with components and locations failed: %w", err)
+		return nil, fmt.Errorf("query for devices with locations and site names failed: %w", err)
 	}
 	defer rows.Close()
 
-	deviceMap := make(map[string]*models.DeviceWithComponentsAndLocation)
+	var devices []*models.DeviceWithComponentsAndLocation
 
 	for rows.Next() {
-		var deviceWithInfo models.DeviceWithComponentsAndLocation
-		var location models.Location
 		var device models.Device
-		var locationID sql.NullInt64    // Use NullInt32 for nullable location_id
-		var locationName sql.NullString // Use NullString for nullable location_name
+		var location models.LocationWithSite
+
+		var locationID, siteID sql.NullInt64
+		var locationName, locationDescription, siteName sql.NullString
 
 		if err := rows.Scan(
 			&device.DeviceID, &device.LastSeen, &device.Status, &device.CreatedAt,
-			&locationID, &locationName,
+			&locationID, &locationName, &locationDescription, &siteID,
+			&siteName,
 		); err != nil {
-			return nil, fmt.Errorf("scan for device with components and locations failed: %w", err)
+			return nil, fmt.Errorf("scan device row failed: %w", err)
 		}
 
-		// Assign location only if valid
-		if locationID.Valid {
-			valID := int(locationID.Int64)
-			location.ID = &valID // Assign the address of the local variable
-			location.Name = &locationName.String
-			deviceWithInfo.Location = &location
-		}
-
-		// Check if device already exists in map (for aggregation if needed, though this query structure won't create duplicates for devices)
-		if existingDevice, ok := deviceMap[device.DeviceID]; ok {
-			// This branch might not be strictly necessary with this specific query,
-			// but it's good practice for more complex aggregations.
-			existingDevice.Location = deviceWithInfo.Location // Update location if needed
-		} else {
-			deviceWithInfo.DeviceWithComponents = &models.DeviceWithComponents{ // Initialize inner struct
+		deviceInfo := &models.DeviceWithComponentsAndLocation{
+			DeviceWithComponents: &models.DeviceWithComponents{
 				Device: &device,
-			}
-			deviceMap[device.DeviceID] = &deviceWithInfo
-			devicesWithInfo = append(devicesWithInfo, &deviceWithInfo)
+			},
 		}
+
+		// Assign location
+		if locationID.Valid {
+			id := int(locationID.Int64)
+			location.ID = &id
+			if locationName.Valid {
+				location.Name = &locationName.String
+			}
+			if locationDescription.Valid {
+				location.Description = &locationDescription.String
+			}
+			if siteID.Valid {
+				sID := int(siteID.Int64)
+				location.SiteID = &sID
+			}
+			if siteName.Valid {
+				location.SiteName = &siteName.String
+			}
+			deviceInfo.Location = &location
+		}
+
+		devices = append(devices, deviceInfo)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error during device with components and locations rows iteration: %w", err)
+		return nil, fmt.Errorf("rows iteration error: %w", err)
 	}
 
-	// Fetch components for each device (separate query for simplicity and to avoid large joins)
-	for _, deviceInfo := range devicesWithInfo {
+	// Fetch components for each device
+	for _, deviceInfo := range devices {
 		if deviceInfo.DeviceWithComponents != nil && deviceInfo.DeviceWithComponents.Device != nil {
 			components, err := d.GetcomponentsByDeviceID(deviceInfo.DeviceWithComponents.Device.DeviceID)
 			if err != nil {
@@ -313,7 +319,7 @@ func (d *PostgresDeviceDAO) FindAllWithcomponentsAndLocations(ctx context.Contex
 		}
 	}
 
-	return devicesWithInfo, nil
+	return devices, nil
 }
 
 // CountAll counts total devices based on search criteria.
@@ -491,7 +497,8 @@ func (d *PostgresDeviceDAO) UpdateComponentStatus(tx *sql.Tx, id string, status 
 func (d *PostgresDeviceDAO) GetcomponentsByDeviceID(id string) ([]*models.Component, error) {
 	rows, err := d.db.Query(`
         SELECT c.component_id, c.component_name, c.component_type, c.component_subtype,
-               c.component_status, c.min_threshold, c.max_threshold, c.max_running_hours
+               c.component_status, c.min_threshold, c.max_threshold, c.max_running_hours,
+               c.current_running_hours
         FROM public.components c
         JOIN public.device_components dc ON c.component_id = dc.component_id
         WHERE dc.device_id = $1 AND dc.removal_date IS NULL
@@ -516,6 +523,7 @@ func (d *PostgresDeviceDAO) GetcomponentsByDeviceID(id string) ([]*models.Compon
 			&minThreshold,
 			&maxThreshold,
 			&maxRunningHours,
+			&component.CurrentRunningHours,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("error scanning component row for device %s: %w", id, err)
@@ -743,6 +751,16 @@ func (d *PostgresDeviceDAO) MarkAllLogsAsRead(tx *sql.Tx, userID int) error {
 	_, err := executor.Exec(query, userID)
 	if err != nil {
 		return fmt.Errorf("failed to mark all logs as read for user %d: %w", userID, err)
+	}
+	return nil
+}
+
+// UpdateComponentRunningHours updates the running hours of a component within a transaction.
+func (d *PostgresDeviceDAO) UpdateComponentRunningHours(tx *sql.Tx, id string, hours int32) error {
+	executor := d.getExecutor(tx)
+	_, err := executor.Exec("UPDATE components SET current_running_hours = $1 WHERE component_id = $2", hours, id)
+	if err != nil {
+		return fmt.Errorf("failed to update component running hours for %s: %w", id, err)
 	}
 	return nil
 }

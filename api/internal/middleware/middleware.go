@@ -19,13 +19,10 @@ const RoleContextKey = "roles"
 // JWTAuthMiddleware verifies the JWT and adds the user ID to the context.
 func JWTAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Println("JWTAuthMiddleware: Starting JWT authentication")
 
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
 			log.Println("JWTAuthMiddleware: Authorization header missing")
-			log.Printf("JWTAuthMiddleware: Request URL: %s, Method: %s", r.URL.Path, r.Method)
-			log.Printf("JWTAuthMiddleware: Headers: %v", r.Header)
 			http.Error(w, "Authorization header missing", http.StatusUnauthorized)
 			return
 		}
@@ -36,7 +33,6 @@ func JWTAuthMiddleware(next http.Handler) http.Handler {
 			http.Error(w, "Invalid token format", http.StatusUnauthorized)
 			return
 		}
-		log.Printf("JWTAuthMiddleware: Extracted token string: %s", tokenString)
 
 		claims, err := auth.ValidateJWT(tokenString)
 		if err != nil {
@@ -47,7 +43,6 @@ func JWTAuthMiddleware(next http.Handler) http.Handler {
 
 		// Store the entire claims map in the request context
 		ctx := context.WithValue(r.Context(), UserClaimsContextKey, claims)
-		log.Printf("JWTAuthMiddleware: All claims stored in context with key '%s'", UserClaimsContextKey)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

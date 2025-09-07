@@ -218,7 +218,7 @@ func (h *MqttHandler) SetStatus(w http.ResponseWriter, r *http.Request) {
 	// Construct MQTT payload
 	payload := map[string]interface{}{
 		"device_id": deviceID,
-		"status":    req.Status,
+		"command":   req.Status,
 	}
 	if locationID != 0 {
 		payload["location_id"] = locationID
@@ -232,7 +232,7 @@ func (h *MqttHandler) SetStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Publish to MQTT
-	topic := "devices/status/" + deviceID
+	topic := "devices/commands/" + deviceID
 	token := h.mqttClient.Publish(topic, 0, false, payloadBytes) // QoS 0, not retained
 	token.Wait()
 	if token.Error() != nil {
@@ -456,45 +456,61 @@ func (h *MqttHandler) HandleDeviceAlert(client mqtt.Client, message mqtt.Message
 	}
 }
 
-func (h *MqttHandler) ResetTimer(writer http.ResponseWriter, request *http.Request) {
-	vars := mux.Vars(request)
-	deviceID := vars["deviceID"]
-	componentID := vars["ComponentID"] // This is the component_name from the URL, not the unique ID
+func (h *MqttHandler) HandleRunningHours(client mqtt.Client, message mqtt.Message) {
+	log.Printf("Received running hours update on topic: %s, message: %s\n", message.Topic(), string(message.Payload()))
 
-	if deviceID == "" || componentID == "" {
-		http.Error(writer, "Missing deviceID or ComponentID (component_name) in URL", http.StatusBadRequest)
+	parts := splitTopic(message.Topic())
+	// Expected format: devices/running_hours/deviceID
+	if len(parts) != 3 || parts[0] != "devices" || parts[1] != "running_hours" {
+		log.Printf("Received message on unexpected running hours topic format: %s\n", message.Topic())
 		return
 	}
 
-	// The Node.js simulator expects commands on "devices/commands/{deviceID}"
-	// and the command type in the payload.
-	topic := fmt.Sprintf("devices/commands/%s", deviceID)
+	deviceID := parts[2] // Device ID is the third part
 
-	// Create payload for the command
-	payload := map[string]interface{}{
-		"command":      "reset_component_timer", // Command type
-		"device_id":    deviceID,
-		"component_id": componentID, // This is the component_name from the URL
+	var payload struct {
+		DeviceID    string `json:"device_id"`
+		ComponentID string `json:"component_id"`
+		Hours       int32  `json:"running_hours"`
+		Timestamp   string `json:"timestamp"`
 	}
-	payloadBytes, err := json.Marshal(payload)
+
+	if err := json.Unmarshal(message.Payload(), &payload); err != nil {
+		log.Printf("Error unmarshalling JSON for running hours on topic '%s': %v\n", message.Topic(), err)
+		return
+	}
+
+	// Ensure deviceID from topic matches payload, for safety
+	if payload.DeviceID != deviceID {
+		log.Printf("Warning: DeviceID mismatch between topic (%s) and payload (%s) for running hours update on topic %s\n",
+			deviceID, payload.DeviceID, message.Topic())
+		// You might choose to return here if a mismatch is critical. For now, we'll proceed with topic's deviceID.
+	}
+
+	log.Printf("Received running hours '%d' for component '%s' from device '%s'.\n", payload.Hours, payload.ComponentID, deviceID)
+
+	// Begin a transaction for running hours update
+	tx, err := h.deviceService.BeginTransaction()
 	if err != nil {
-		log.Printf("Error marshalling reset timer payload: %v", err)
-		http.Error(writer, "Internal server error", http.StatusInternalServerError)
+		log.Printf("Error beginning transaction for running hours update: %v", err)
 		return
 	}
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+			panic(r)
+		} else if err != nil {
+			tx.Rollback()
+		} else {
+			tx.Commit()
+		}
+	}()
 
-	// Publish the message
-	token := h.mqttClient.Publish(topic, 0, false, payloadBytes)
-	token.Wait()
-
-	if token.Error() != nil {
-		log.Printf("MQTT publish error for reset timer: %v", token.Error())
-		http.Error(writer, "Failed to publish reset timer command", http.StatusInternalServerError)
-		return
+	// Update the component's running hours in the database
+	if err = h.deviceService.UpdateComponentRunningHours(tx, payload.ComponentID, payload.Hours); err != nil {
+		log.Printf("Error updating running hours for component '%s': %v", payload.ComponentID, err)
+		return // Return on error, defer will rollback
 	}
-
-	writer.WriteHeader(http.StatusOK)
-	writer.Write([]byte(fmt.Sprintf("Reset timer command sent for device '%s', component '%s'", deviceID, componentID)))
 }
 
 // Helper function to split the MQTT topic

@@ -4,7 +4,11 @@ import (
 	"CapIot-api/internal/models"
 	"context"
 	"database/sql"
+	"fmt"
+	"github.com/lib/pq"
 	"log"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -329,6 +333,43 @@ func (r *PostgresLocationRepository) GetLocationsDevicesUsers(ctx context.Contex
 	return locationsSlice, nil
 }
 
+// GetMySites retrieves sites associated with a user ID.
+func (r *PostgresLocationRepository) GetMySites(ctx context.Context, userID int) ([]models.Site, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `SELECT s.site_id, s.site_name, s.site_address
+	FROM sites s
+	JOIN locations l ON s.site_id = l.site_id
+	JOIN device_location dl ON l.location_id = dl.location_id
+	JOIN users u ON dl.id = u.id
+	WHERE u.id = $1
+	GROUP BY s.site_id`
+
+	rows, err := r.db.QueryContext(ctx, query, userID)
+	if err != nil {
+		log.Printf("Error getting sites for user ID %d: %v\n", userID, err)
+		return []models.Site{}, err
+	}
+	defer rows.Close()
+
+	sites := []models.Site{}
+	for rows.Next() {
+		var site models.Site
+		if err := rows.Scan(&site.ID, &site.Name, &site.Address); err != nil {
+			log.Printf("Error scanning site row: %v\n", err)
+			return []models.Site{}, err
+		}
+		sites = append(sites, site)
+	}
+
+	if err := rows.Err(); err != nil {
+		log.Printf("Error iterating site rows: %v\n", err)
+		return []models.Site{}, err
+	}
+	return sites, nil
+}
+
 // GetComponentsByLocationID retrieves components associated with a location ID.
 func (r *PostgresLocationRepository) GetComponentsByLocationID(locationID string) ([]models.Component, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -398,4 +439,118 @@ func (r *PostgresLocationRepository) GetDevicesByLocationID(id string) ([]models
 		return []models.Device{}, err
 	}
 	return devices, nil
+}
+
+// CheckUserAccessToLocation checks if a user has access to a location.
+func (r *PostgresLocationRepository) CheckUserAccessToLocation(userID int64, locationID string) (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `SELECT 1
+	FROM users u
+	JOIN device_location dl ON u.id = dl.id
+	WHERE u.id = $1 AND dl.location_id = $2
+	LIMIT 1`
+
+	var exists int
+	err := r.db.QueryRowContext(ctx, query, userID, locationID).Scan(&exists)
+	if err == sql.ErrNoRows {
+		return false, nil
+	} else if err != nil {
+		log.Printf("Error checking user access to location: %v\n", err)
+		return false, err
+	}
+	return true, nil
+}
+
+// CheckUserAccessToSite checks if a user has access to a site.
+func (r *PostgresLocationRepository) CheckUserAccessToSite(userID int64, siteID int64) (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := `SELECT 1
+	          FROM user_site
+	          WHERE user_id = $1 AND site_id = $2
+	          LIMIT 1`
+
+	var exists int
+	err := r.db.QueryRowContext(ctx, query, userID, siteID).Scan(&exists)
+	if err == sql.ErrNoRows {
+		return false, nil
+	} else if err != nil {
+		log.Printf("Error checking user access to site: %v\n", err)
+		return false, err
+	}
+	return true, nil
+}
+func (r *PostgresLocationRepository) GetLocationsBySiteIDs(ctx context.Context, siteIDs []string, page int, limit int, term string) ([]*models.Location, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 {
+		limit = 10
+	}
+
+	// Convert siteIDs []string to []int
+	intSiteIDs := make([]int, len(siteIDs))
+	for i, id := range siteIDs {
+		intID, err := strconv.Atoi(strings.TrimSpace(id))
+		if err != nil {
+			log.Printf("Invalid site ID format: %v\n", id)
+			return nil, fmt.Errorf("invalid site ID format: %s", id)
+		}
+		intSiteIDs[i] = intID
+	}
+
+	// Base query
+	query := `
+		SELECT location_id, location_name, location_description, site_id
+		FROM locations
+		WHERE site_id = ANY($1)
+	`
+	args := []interface{}{pq.Array(intSiteIDs)}
+	argIndex := 2
+
+	// Add search term if present
+	if term != "" {
+		query += fmt.Sprintf(" AND location_name ILIKE $%d", argIndex)
+		args = append(args, "%"+term+"%")
+		argIndex++
+	}
+
+	// Pagination
+	query += fmt.Sprintf(" ORDER BY location_name LIMIT $%d OFFSET $%d", argIndex, argIndex+1)
+	args = append(args, limit, (page-1)*limit)
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		log.Printf("Error querying locations by site IDs: %v\n", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var locations []*models.Location
+	for rows.Next() {
+		var loc models.Location
+		var siteID sql.NullInt32
+		if err := rows.Scan(&loc.ID, &loc.Name, &loc.Description, &siteID); err != nil {
+			log.Printf("Error scanning location row: %v\n", err)
+			return nil, err
+		}
+		if siteID.Valid {
+			id := int(siteID.Int32)
+			loc.SiteID = &id
+		}
+		locations = append(locations, &loc)
+	}
+
+	if err := rows.Err(); err != nil {
+		log.Printf("Error iterating location rows: %v\n", err)
+		return nil, err
+	}
+
+	return locations, nil
 }

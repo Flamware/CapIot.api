@@ -24,14 +24,15 @@ type Device struct {
 
 // Component represents the component type data.
 type Component struct {
-	ComponentID      string   `json:"component_id" db:"component_id"`
-	ComponentName    string   `json:"component_name" db:"component_name"`
-	ComponentType    string   `json:"component_type" db:"component_type"`
-	ComponentSubtype string   `json:"component_subtype,omitempty" db:"component_subtype"`
-	ComponentStatus  string   `json:"component_status,omitempty" db:"component_status"`
-	MinThreshold     *float64 `json:"min_threshold,omitempty" db:"min_threshold"`
-	MaxThreshold     *float64 `json:"max_threshold,omitempty" db:"max_threshold"`
-	MaxRunningHours  *int32   `json:"max_running_hours,omitempty" db:"max_running_hours"`
+	ComponentID         string   `json:"component_id" db:"component_id"`
+	ComponentName       string   `json:"component_name" db:"component_name"`
+	ComponentType       string   `json:"component_type" db:"component_type"`
+	ComponentSubtype    string   `json:"component_subtype,omitempty" db:"component_subtype"`
+	ComponentStatus     string   `json:"component_status,omitempty" db:"component_status"`
+	MinThreshold        *float64 `json:"min_threshold,omitempty" db:"min_threshold"`
+	MaxThreshold        *float64 `json:"max_threshold,omitempty" db:"max_threshold"`
+	MaxRunningHours     *int32   `json:"max_running_hours,omitempty" db:"max_running_hours"`
+	CurrentRunningHours *int32   `json:"current_running_hours,omitempty" db:"current_running_hours"`
 }
 
 type ComponentRangeUpdate struct {
@@ -83,7 +84,7 @@ const (
 // DeviceWithComponentsAndLocation represents a device with its components and location.
 type DeviceWithComponentsAndLocation struct {
 	*DeviceWithComponents
-	Location *Location `json:"location,omitempty"`
+	Location *LocationWithSite `json:"location,omitempty"`
 }
 
 // AssignDeviceToLocationRequest is used for location assignment via API.

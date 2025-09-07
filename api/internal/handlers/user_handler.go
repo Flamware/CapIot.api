@@ -138,36 +138,6 @@ func (h *UserHandler) AsignUser(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetUserLocations handles the request to retrieve all locations for a user.
-func (h *UserHandler) GetUsersSites(w http.ResponseWriter, r *http.Request) {
-	// Extract the user ID from the JWT claims
-	userClaims, ok := r.Context().Value(middleware.UserClaimsContextKey).(jwt.MapClaims)
-	if !ok {
-		http.Error(w, "Invalid user claims", http.StatusInternalServerError)
-		return
-	}
-	userIDFloat, ok := userClaims["id"].(float64)
-	if !ok {
-		http.Error(w, "Invalid user ID", http.StatusInternalServerError)
-		return
-	}
-	userID := int(userIDFloat)
-	log.Printf("GetUserLocations: Extracted User ID from claims: %d", userID)
-	// Call the service to get user locations
-	locations, err := h.userService.GetUserSites(r.Context(), userID)
-	if err != nil {
-		http.Error(w, "Failed to get user locations", http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(locations); err != nil {
-		log.Printf("GetUserLocations: Failed to encode locations to JSON: %v", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-	log.Println("GetUserLocations: Successfully returned user locations")
-}
-
-// GetUserLocations handles the request to retrieve all locations for a user.
 func (h *UserHandler) GetUserLocations(w http.ResponseWriter, r *http.Request) {
 	// Extract the user ID from the JWT claims
 	userClaims, ok := r.Context().Value(middleware.UserClaimsContextKey).(jwt.MapClaims)
@@ -305,5 +275,36 @@ func (h *UserHandler) GetUsers(writer http.ResponseWriter, request *http.Request
 	if err := json.NewEncoder(writer).Encode(users); err != nil {
 		log.Printf("Failed to encode response: %v", err)
 		http.Error(writer, "Failed to send response", http.StatusInternalServerError)
+	}
+}
+
+func (h *UserHandler) GetMySites(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	// Extract the user ID from the JWT claims
+	userClaims, ok := r.Context().Value(middleware.UserClaimsContextKey).(jwt.MapClaims)
+	if !ok {
+		http.Error(w, "Invalid user claims", http.StatusInternalServerError)
+		return
+	}
+	userIDFloat, ok := userClaims["id"].(float64)
+	if !ok {
+		http.Error(w, "Invalid user ID", http.StatusInternalServerError)
+		return
+	}
+	userID := int(userIDFloat)
+
+	sites, err := h.userService.GetUserSites(r.Context(), userID)
+	if err != nil {
+		http.Error(w, "Error getting sites", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(sites); err != nil {
+		http.Error(w, "Error encoding response", http.StatusInternalServerError)
+		return
 	}
 }

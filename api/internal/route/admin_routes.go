@@ -65,10 +65,10 @@ func SetupAdminRoutes(r *mux.Router,
 	adminRouter.HandleFunc("/device/{deviceID}", deviceHandler.DeleteDevice).Methods(http.MethodDelete)
 	// Define the handler for updating a device's component range
 	adminRouter.HandleFunc("/devices/{deviceID}/components/{ComponentID}/range", deviceHandler.UpdatecomponentRange).Methods(http.MethodPut)
+	// Define the handler for getting all components of a device
+	adminRouter.HandleFunc("/devices/{deviceID}/components", deviceHandler.GetcomponentsByDeviceID).Methods(http.MethodGet)
 
 	// --- MQTT & Device Status Routes ---
 	// Define the handler for starting/stopping monitoring for a device
 	adminRouter.HandleFunc("/devices/{deviceID}", mqttHandler.SetStatus).Methods(http.MethodPatch)
-	// Define the handler for resetting a device's component timer
-	adminRouter.HandleFunc("/devices/{deviceID}/components/{ComponentID}/timer/reset", mqttHandler.ResetTimer).Methods(http.MethodGet)
 }

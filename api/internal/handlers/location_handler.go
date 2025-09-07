@@ -1,13 +1,16 @@
 package handlers
 
 import (
+	"CapIot-api/internal/middleware"
 	"CapIot-api/internal/models"
 	"CapIot-api/internal/service"
 	"encoding/json"
+	"github.com/dgrijalva/jwt-go"
 	"github.com/gorilla/mux"
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 )
 
 type LocationHandler struct {
@@ -308,5 +311,73 @@ func (h *LocationHandler) GetSitesWithPagination(w http.ResponseWriter, r *http.
 	if err := json.NewEncoder(w).Encode(sitesData); err != nil {
 		log.Printf("Failed to encode response: %v", err)
 		http.Error(w, "Failed to send response", http.StatusInternalServerError)
+	}
+}
+
+func (h *LocationHandler) GetLocationsBySiteIDs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Read query params
+	query := r.URL.Query()
+	siteIdsParam := query.Get("site_ids")
+	if siteIdsParam == "" {
+		http.Error(w, "Missing site_ids query parameter", http.StatusBadRequest)
+		return
+	}
+
+	rawIDs := strings.Split(siteIdsParam, ",")
+	var siteIDs []string
+	for _, raw := range rawIDs {
+		if trimmed := strings.TrimSpace(raw); trimmed != "" {
+			siteIDs = append(siteIDs, trimmed)
+		}
+	}
+
+	// Read page & limit for pagination (optional)
+	pageStr := query.Get("page")
+	limitStr := query.Get("limit")
+	page, _ := strconv.Atoi(pageStr)
+	if page < 1 {
+		page = 1
+	}
+	limit, _ := strconv.Atoi(limitStr)
+	if limit < 1 {
+		limit = 10 // default page size
+	}
+
+	// Read search term (optional)
+	term := query.Get("search")
+	// Default to empty string if not provided
+	if term == "" {
+		term = ""
+	}
+
+	// Extract user ID from JWT claims
+	userClaims, ok := r.Context().Value(middleware.UserClaimsContextKey).(jwt.MapClaims)
+	if !ok {
+		http.Error(w, "Invalid user claims", http.StatusInternalServerError)
+		return
+	}
+	userIDFloat, ok := userClaims["id"].(float64)
+	if !ok {
+		http.Error(w, "Invalid user ID", http.StatusInternalServerError)
+		return
+	}
+	userID := int64(userIDFloat)
+
+	// Call service with validated site IDs + user + pagination + search term
+	locations, err := h.locationService.GetLocationsBySiteIDs(r.Context(), siteIDs, userID, page, limit, term)
+	if err != nil {
+		http.Error(w, "Error getting locations", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(locations); err != nil {
+		http.Error(w, "Error encoding response", http.StatusInternalServerError)
+		return
 	}
 }

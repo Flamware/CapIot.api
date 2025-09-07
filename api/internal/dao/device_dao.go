@@ -20,7 +20,7 @@ type DeviceDAO interface {
 	DeleteDevice(tx *sql.Tx, id string) error
 	GetLocationByDeviceID(id string) (*models.Location, error)
 	UnassignDeviceFromLocation(tx *sql.Tx, id string) error // Updated to take tx
-	FindAllWithcomponentsAndLocations(ctx context.Context, limit int, offset int, search string) ([]*models.DeviceWithComponentsAndLocation, error)
+	FindAllWithComponentsAndLocations(ctx context.Context, limit int, offset int, search string) ([]*models.DeviceWithComponentsAndLocation, error)
 	CountAll(ctx context.Context, search string) (int, error)
 	SetDeviceToLocation(ctx context.Context, id string, id2 int) error
 
@@ -40,5 +40,6 @@ type DeviceDAO interface {
 	GetAllLogsByUser(userID int) ([]*models.ComponentLog, error)
 	UserHasAccessTocomponent(userID int, ComponentID string) (bool, error)
 	MarkcomponentLogsAsRead(tx *sql.Tx, ComponentID string, logIds []int) error // Updated to take tx
-	MarkAllLogsAsRead(tx *sql.Tx, userID int) error                             // Updated to take tx
+	MarkAllLogsAsRead(tx *sql.Tx, userID int) error
+	UpdateComponentRunningHours(tx *sql.Tx, id string, hours int32) error
 }

@@ -20,6 +20,9 @@ func SetupUserRoutes(r *mux.Router, userHandler *handlers.UserHandler) {
 	// Get locations of a user
 	r.Handle("/api/users/me/locations", middleware.JWTAuthMiddleware(http.HandlerFunc(userHandler.GetUserLocations))).Methods(http.MethodGet)
 
+	// Get sites of a user
+	r.Handle("/api/sites/me", middleware.JWTAuthMiddleware(http.HandlerFunc(userHandler.GetMySites))).Methods(http.MethodGet)
+
 	// Update current user
 	r.Handle("/api/users/me", middleware.JWTAuthMiddleware(http.HandlerFunc(userHandler.UpdateCurrentUser))).Methods(http.MethodPatch)
 
