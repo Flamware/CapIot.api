@@ -7,40 +7,22 @@ import (
 	"net/http"
 )
 
-// RespondWithError sends a JSON error response.
-func RespondWithError(writer http.ResponseWriter, statusCode int, message string, details interface{}) {
-	writer.WriteHeader(statusCode)
+// RespondWithError sends a JSON error response using the APIError model.
+// It sets the HTTP status code from the APIError and encodes the entire struct.
+func RespondWithError(writer http.ResponseWriter, apiErr models.APIError) {
+	// Set the HTTP status code from the APIError struct
+	writer.WriteHeader(apiErr.StatusCode)
 	writer.Header().Set("Content-Type", "application/json")
-	errResponse := models.APIError{
-		Code:    GetStatusText(statusCode), // Use the general GetStatusText
-		Message: message,
-		Details: details,
-	}
-	if err := json.NewEncoder(writer).Encode(errResponse); err != nil {
+
+	// Encode the entire APIError struct to JSON
+	if err := json.NewEncoder(writer).Encode(apiErr); err != nil {
 		log.Printf("Failed to encode error response: %v", err)
+		// Fallback for a critical encoding error
 		http.Error(writer, "Failed to send error response", http.StatusInternalServerError)
 	}
 }
 
-// GetStatusText returns a generic error code based on the HTTP status code.
-func GetStatusText(statusCode int) string {
-	switch statusCode {
-	case http.StatusBadRequest:
-		return "bad_request"
-	case http.StatusUnauthorized:
-		return "unauthorized"
-	case http.StatusForbidden:
-		return "forbidden"
-	case http.StatusNotFound:
-		return "not_found"
-	case http.StatusInternalServerError:
-		return "internal_server_error"
-	default:
-		return "error"
-	}
-}
-
-// RespondWithJSON sends a JSON success response. You might want a similar function for success.
+// RespondWithJSON sends a JSON success response.
 func RespondWithJSON(writer http.ResponseWriter, statusCode int, payload interface{}) {
 	writer.WriteHeader(statusCode)
 	writer.Header().Set("Content-Type", "application/json")

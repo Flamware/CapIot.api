@@ -20,7 +20,7 @@ type LocationDAO interface {
 	GetSitesWithPagination(ctx context.Context, page int, limit int, term string) ([]*models.Site, error)
 	CountSites(ctx context.Context, term string) (int, error)
 	DeleteSite(ctx context.Context, id int64) error
-	CheckUserAccessToLocation(id int64, id2 string) (bool, error)
-	CheckUserAccessToSite(id int64, id2 int64) (bool, error)
+	CheckUserAccessToLocation(id int, id2 int64) (bool, error)
+	CheckUserAccessToSite(id int, id2 int64) (bool, error)
 	GetLocationsBySiteIDs(ctx context.Context, siteIDs []string, page int, limit int, term string) ([]*models.Location, error)
 }

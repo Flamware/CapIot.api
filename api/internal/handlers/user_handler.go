@@ -2,7 +2,7 @@
 package handlers
 
 import (
-	"CapIot-api/internal/middleware"
+	"CapIot-api/internal/config"
 	"CapIot-api/internal/service"
 	"encoding/json"
 	"github.com/dgrijalva/jwt-go"
@@ -23,7 +23,7 @@ func NewUserHandler(userService *service.DefaultUserService) *UserHandler {
 }
 
 func (h *UserHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
-	userClaims, ok := r.Context().Value(middleware.UserClaimsContextKey).(jwt.MapClaims)
+	userClaims, ok := r.Context().Value(config.UserClaimsContextKey).(jwt.MapClaims)
 	if !ok {
 		log.Println("GetCurrentUser: Invalid user claims type in context")
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -57,8 +57,7 @@ func (h *UserHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *UserHandler) UpdateCurrentUser(w http.ResponseWriter, r *http.Request) {
-	claimsContextKey := middleware.UserClaimsContextKey
-	userClaims, ok := r.Context().Value(claimsContextKey).(jwt.MapClaims)
+	userClaims, ok := r.Context().Value(config.UserClaimsContextKey).(jwt.MapClaims)
 	if !ok {
 		http.Error(w, "Invalid user claims", http.StatusInternalServerError)
 		return
@@ -140,7 +139,7 @@ func (h *UserHandler) AsignUser(w http.ResponseWriter, r *http.Request) {
 // GetUserLocations handles the request to retrieve all locations for a user.
 func (h *UserHandler) GetUserLocations(w http.ResponseWriter, r *http.Request) {
 	// Extract the user ID from the JWT claims
-	userClaims, ok := r.Context().Value(middleware.UserClaimsContextKey).(jwt.MapClaims)
+	userClaims, ok := r.Context().Value(config.UserClaimsContextKey).(jwt.MapClaims)
 	if !ok {
 		http.Error(w, "Invalid user claims", http.StatusInternalServerError)
 		return
@@ -284,7 +283,7 @@ func (h *UserHandler) GetMySites(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Extract the user ID from the JWT claims
-	userClaims, ok := r.Context().Value(middleware.UserClaimsContextKey).(jwt.MapClaims)
+	userClaims, ok := r.Context().Value(config.UserClaimsContextKey).(jwt.MapClaims)
 	if !ok {
 		http.Error(w, "Invalid user claims", http.StatusInternalServerError)
 		return
@@ -304,6 +303,53 @@ func (h *UserHandler) GetMySites(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(sites); err != nil {
+		http.Error(w, "Error encoding response", http.StatusInternalServerError)
+		return
+	}
+}
+
+// getNotifications retrieves notifications for the current user with Lazy Loading
+func (h *UserHandler) GetNotifications(w http.ResponseWriter, r *http.Request) {
+	// Extract the user ID from the JWT claims
+	userClaims, ok := r.Context().Value(config.UserClaimsContextKey).(jwt.MapClaims)
+	if !ok {
+		http.Error(w, "Invalid user claims", http.StatusInternalServerError)
+		return
+	}
+	userIDFloat, ok := userClaims["id"].(float64)
+	if !ok {
+		http.Error(w, "Invalid user ID", http.StatusInternalServerError)
+		return
+	}
+	userID := int(userIDFloat)
+
+	// Get pagination parameters from query string
+	pageStr := r.URL.Query().Get("page")
+	limitStr := r.URL.Query().Get("limit")
+
+	page := 1
+	limit := 10 // Default page size
+
+	if pageStr != "" {
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			page = p
+		}
+	}
+
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 100 { // Add a reasonable max limit
+			limit = l
+		}
+	}
+
+	notifications, err := h.userService.GetNotifications(r.Context(), userID, page, limit)
+	if err != nil {
+		http.Error(w, "Error getting notifications", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(notifications); err != nil {
 		http.Error(w, "Error encoding response", http.StatusInternalServerError)
 		return
 	}

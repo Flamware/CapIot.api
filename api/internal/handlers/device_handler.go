@@ -1,4 +1,3 @@
-// internal/handlers/device_handler.go
 package handlers
 
 import (
@@ -18,7 +17,7 @@ type assignDeviceRequest struct {
 	LocationID int `json:"locationID"`
 }
 
-// Corrected NewDeviceHandler to accept the interface type
+// NewDeviceHandler to accept the interface type
 func NewDeviceHandler(deviceService *service.DefaultDeviceService) *DeviceHandler {
 	return &DeviceHandler{
 		deviceService: deviceService,
@@ -27,12 +26,14 @@ func NewDeviceHandler(deviceService *service.DefaultDeviceService) *DeviceHandle
 
 func (h *DeviceHandler) GetAllDevices(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		utils.RespondWithError(w, http.StatusMethodNotAllowed, "Method not allowed", nil)
+		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 	devices, err := h.deviceService.GetAllDevices()
 	if err != nil {
-		utils.RespondWithError(w, http.StatusInternalServerError, "Error fetching devices", map[string]string{"error": err.Error()})
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error fetching devices", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 	utils.RespondWithJSON(w, http.StatusOK, devices)
@@ -43,7 +44,8 @@ func (h *DeviceHandler) DeleteDevice(writer http.ResponseWriter, request *http.R
 
 	if request.Method != http.MethodDelete {
 		log.Printf("Method %s not allowed...", request.Method)
-		utils.RespondWithError(writer, http.StatusMethodNotAllowed, "Method not allowed", nil)
+		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 
@@ -51,7 +53,8 @@ func (h *DeviceHandler) DeleteDevice(writer http.ResponseWriter, request *http.R
 	deviceID, ok := vars["deviceID"]
 	if !ok {
 		log.Printf("Missing device ID in path")
-		utils.RespondWithError(writer, http.StatusBadRequest, "Missing device ID in path", nil)
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Missing device ID in path", nil, http.StatusBadRequest)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 
@@ -60,29 +63,26 @@ func (h *DeviceHandler) DeleteDevice(writer http.ResponseWriter, request *http.R
 	// Begin transaction
 	tx, err := h.deviceService.BeginTransaction()
 	if err != nil {
-		utils.RespondWithError(writer, http.StatusInternalServerError, "Error starting transaction",
-			map[string]string{"error": err.Error()})
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error starting transaction", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 
-	// THIS IS THE CRITICAL LINE. Defer a rollback in case of an error.
+	// Defer a rollback in case of an error.
 	defer tx.Rollback()
 
 	// Pass the transaction to the DeleteDevice method
 	if err := h.deviceService.DeleteDevice(tx, deviceID); err != nil {
 		log.Printf("Failed to delete device '%s': %v", deviceID, err)
-		if apiErr, ok := err.(*models.APIError); ok {
-			utils.RespondWithError(writer, apiErr.StatusCode, apiErr.Message, apiErr.Details)
-			return
-		}
-		utils.RespondWithError(writer, http.StatusInternalServerError, "Failed to delete device", map[string]string{"error": err.Error(), "deviceID": deviceID})
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Failed to delete device", map[string]string{"error": err.Error(), "deviceID": deviceID}, http.StatusInternalServerError)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 
 	// Commit the transaction only if all operations were successful
 	if err := tx.Commit(); err != nil {
-		utils.RespondWithError(writer, http.StatusInternalServerError, "Error committing transaction",
-			map[string]string{"error": err.Error()})
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error committing transaction", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 
@@ -90,22 +90,26 @@ func (h *DeviceHandler) DeleteDevice(writer http.ResponseWriter, request *http.R
 }
 func (h *DeviceHandler) GetDeviceByID(writer http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodGet {
-		utils.RespondWithError(writer, http.StatusMethodNotAllowed, "Method not allowed", nil)
+		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 	vars := mux.Vars(request)
 	deviceID, ok := vars["deviceID"]
 	if !ok {
-		utils.RespondWithError(writer, http.StatusBadRequest, "Missing device ID in path", nil)
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Missing device ID in path", nil, http.StatusBadRequest)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 	device, err := h.deviceService.GetDeviceByID(deviceID)
 	if err != nil {
-		utils.RespondWithError(writer, http.StatusInternalServerError, "Error getting device", map[string]string{"error": err.Error()})
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error getting device", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 	if device == nil {
-		utils.RespondWithError(writer, http.StatusNotFound, "Device not found", nil)
+		apiErr := models.NewAPIError(models.ErrorCodeNotFound, "Device not found", nil, http.StatusNotFound)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 	utils.RespondWithJSON(writer, http.StatusOK, device)
@@ -113,18 +117,21 @@ func (h *DeviceHandler) GetDeviceByID(writer http.ResponseWriter, request *http.
 
 func (h *DeviceHandler) GetcomponentsByDeviceID(writer http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodGet {
-		utils.RespondWithError(writer, http.StatusMethodNotAllowed, "Method not allowed", nil)
+		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 	vars := mux.Vars(request)
 	deviceID, ok := vars["deviceID"]
 	if !ok {
-		utils.RespondWithError(writer, http.StatusBadRequest, "Missing device ID in path", nil)
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Missing device ID in path", nil, http.StatusBadRequest)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 	components, err := h.deviceService.GetcomponentsByDeviceID(deviceID)
 	if err != nil {
-		utils.RespondWithError(writer, http.StatusInternalServerError, "Error getting components", map[string]string{"error": err.Error()})
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error getting components", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 	utils.RespondWithJSON(writer, http.StatusOK, components)
@@ -132,13 +139,15 @@ func (h *DeviceHandler) GetcomponentsByDeviceID(writer http.ResponseWriter, requ
 
 func (h *DeviceHandler) GetUnassignedDevices(writer http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodGet {
-		utils.RespondWithError(writer, http.StatusMethodNotAllowed, "Method not allowed", nil)
+		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 
 	unassignedDevices, err := h.deviceService.GetUnassignedDevices()
 	if err != nil {
-		utils.RespondWithError(writer, http.StatusInternalServerError, "Error getting unassigned devices", map[string]string{"error": err.Error()})
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error getting unassigned devices", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 
@@ -147,32 +156,37 @@ func (h *DeviceHandler) GetUnassignedDevices(writer http.ResponseWriter, request
 
 func (h *DeviceHandler) UnassignDeviceFromLocation(writer http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodPost {
-		utils.RespondWithError(writer, http.StatusMethodNotAllowed, "Method not allowed", nil)
+		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 
 	vars := mux.Vars(request)
 	deviceID, ok := vars["deviceID"]
 	if !ok {
-		utils.RespondWithError(writer, http.StatusBadRequest, "Missing device ID in path", nil)
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Missing device ID in path", nil, http.StatusBadRequest)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 	// Beggin transaction
 	tx, err := h.deviceService.BeginTransaction()
 	if err != nil {
-		utils.RespondWithError(writer, http.StatusInternalServerError, "Error starting transaction",
-			map[string]string{"error": err.Error()})
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error starting transaction", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
+	defer tx.Rollback()
+
 	if err := h.deviceService.UnassignDeviceFromLocation(tx, deviceID); err != nil {
-		utils.RespondWithError(writer, http.StatusInternalServerError, "Error unassigning device from location", map[string]string{"error": err.Error()})
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error unassigning device from location", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 
 	// End transaction
 	if err := tx.Commit(); err != nil {
-		utils.RespondWithError(writer, http.StatusInternalServerError, "Error committing transaction",
-			map[string]string{"error": err.Error()})
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error committing transaction", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 
@@ -182,21 +196,24 @@ func (h *DeviceHandler) UnassignDeviceFromLocation(writer http.ResponseWriter, r
 }
 
 func (h *DeviceHandler) UpdatecomponentRange(writer http.ResponseWriter, request *http.Request) {
-	if request.Method != http.MethodPut {
-		utils.RespondWithError(writer, http.StatusMethodNotAllowed, "Method not allowed", nil)
+	if request.Method != http.MethodPatch {
+		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 
 	vars := mux.Vars(request)
 	DeviceID, ok := vars["deviceID"]
 	if !ok {
-		utils.RespondWithError(writer, http.StatusBadRequest, "Missing device ID in path", nil)
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Missing device ID in path", nil, http.StatusBadRequest)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 
-	ComponentID, ok := vars["ComponentID"]
+	ComponentID, ok := vars["componentID"]
 	if !ok {
-		utils.RespondWithError(writer, http.StatusBadRequest, "Missing component ID in path", nil)
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Missing component ID in path", nil, http.StatusBadRequest)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 
@@ -206,18 +223,21 @@ func (h *DeviceHandler) UpdatecomponentRange(writer http.ResponseWriter, request
 	decoder.DisallowUnknownFields() // optional but good for catching unknown fields
 	err := decoder.Decode(&componentRangeUpdate)
 	if err != nil {
-		utils.RespondWithError(writer, http.StatusBadRequest, "Invalid request body", map[string]string{"error": err.Error()})
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Invalid request body", map[string]string{"error": err.Error()}, http.StatusBadRequest)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 
 	if componentRangeUpdate.MinThreshold == nil || componentRangeUpdate.MaxThreshold == nil {
-		utils.RespondWithError(writer, http.StatusBadRequest, "MinThreshold and MaxThreshold cannot be null", nil)
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "MinThreshold and MaxThreshold cannot be null", nil, http.StatusBadRequest)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 
 	err = h.deviceService.UpdateComponentRange(DeviceID, ComponentID, *componentRangeUpdate.MinThreshold, *componentRangeUpdate.MaxThreshold)
 	if err != nil {
-		utils.RespondWithError(writer, http.StatusInternalServerError, "Failed to update component range", map[string]string{"error": err.Error()})
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Failed to update component range", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 
@@ -230,26 +250,30 @@ func (h *DeviceHandler) UpdatecomponentRange(writer http.ResponseWriter, request
 
 func (h *DeviceHandler) GetcomponentLogsByDeviceIDAndComponentID(writer http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodGet {
-		utils.RespondWithError(writer, http.StatusMethodNotAllowed, "Method not allowed", nil)
+		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 
 	vars := mux.Vars(request)
 	deviceID, ok := vars["deviceID"]
 	if !ok {
-		utils.RespondWithError(writer, http.StatusBadRequest, "Missing device ID in path", nil)
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Missing device ID in path", nil, http.StatusBadRequest)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 
 	ComponentID, ok := vars["ComponentID"]
 	if !ok {
-		utils.RespondWithError(writer, http.StatusBadRequest, "Missing component ID in path", nil)
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Missing component ID in path", nil, http.StatusBadRequest)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 
 	logs, err := h.deviceService.GetcomponentLogsByDeviceIDAndComponentID(deviceID, ComponentID)
 	if err != nil {
-		utils.RespondWithError(writer, http.StatusInternalServerError, "Error getting component logs", map[string]string{"error": err.Error()})
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error getting component logs", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 
@@ -268,7 +292,8 @@ func (h *DeviceHandler) GetLogs(w http.ResponseWriter, r *http.Request) {
 	if deviceID != "" && ComponentID != "" {
 		logs, err = h.deviceService.GetcomponentLogsByDeviceIDAndComponentID(deviceID, ComponentID)
 		if err != nil {
-			utils.RespondWithError(w, http.StatusInternalServerError, "Error fetching logs for specific device and component", map[string]string{"error": err.Error()})
+			apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error fetching logs for specific device and component", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
+			utils.RespondWithError(w, apiErr)
 			return // Important: return after responding to prevent further execution
 		}
 		utils.RespondWithJSON(w, http.StatusOK, logs)
@@ -278,7 +303,8 @@ func (h *DeviceHandler) GetLogs(w http.ResponseWriter, r *http.Request) {
 	if deviceID != "" {
 		logs, err = h.deviceService.GetDeviceLogsByDeviceID(deviceID)
 		if err != nil {
-			utils.RespondWithError(w, http.StatusInternalServerError, "Error fetching all logs for device", map[string]string{"error": err.Error()})
+			apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error fetching all logs for device", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
+			utils.RespondWithError(w, apiErr)
 			return
 		}
 		utils.RespondWithJSON(w, http.StatusOK, logs)
@@ -288,7 +314,8 @@ func (h *DeviceHandler) GetLogs(w http.ResponseWriter, r *http.Request) {
 	if ComponentID != "" {
 		logs, err = h.deviceService.GetcomponentLogsByComponentID(ComponentID) // Assuming this method exists in your service
 		if err != nil {
-			utils.RespondWithError(w, http.StatusInternalServerError, "Error fetching logs for specific component across all devices", map[string]string{"error": err.Error()})
+			apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error fetching logs for specific component across all devices", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
+			utils.RespondWithError(w, apiErr)
 			return
 		}
 		utils.RespondWithJSON(w, http.StatusOK, logs)
@@ -299,14 +326,16 @@ func (h *DeviceHandler) GetLogs(w http.ResponseWriter, r *http.Request) {
 	userID, err := utils.GetUserIDFromContext(r.Context())
 	if err != nil {
 		log.Printf("Failed to retrieve user ID: %v", err)
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		apiErr := models.NewAPIError(models.ErrorCodeUnauthorized, "Unauthorized", nil, http.StatusUnauthorized)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 	log.Printf("Retrieved user ID: %s", userID)
 
 	logs, err = h.deviceService.GetAllLogsByUser(userID)
 	if err != nil {
-		utils.RespondWithError(w, http.StatusInternalServerError, "Error fetching all logs", map[string]string{"error": err.Error()})
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error fetching all logs", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 	utils.RespondWithJSON(w, http.StatusOK, logs)
@@ -315,14 +344,16 @@ func (h *DeviceHandler) GetLogs(w http.ResponseWriter, r *http.Request) {
 
 func (h *DeviceHandler) MarkcomponentLogsAsRead(writer http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodPost {
-		utils.RespondWithError(writer, http.StatusMethodNotAllowed, "Method not allowed", nil)
+		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 
 	vars := mux.Vars(request)
 	ComponentID, ok := vars["ComponentID"]
 	if !ok {
-		utils.RespondWithError(writer, http.StatusBadRequest, "Missing component ID in path", nil)
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Missing component ID in path", nil, http.StatusBadRequest)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 
@@ -333,18 +364,21 @@ func (h *DeviceHandler) MarkcomponentLogsAsRead(writer http.ResponseWriter, requ
 
 	// Decode the JSON payload into the struct
 	if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
-		utils.RespondWithError(writer, http.StatusBadRequest, "Invalid request body", map[string]string{"error": err.Error()})
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Invalid request body", map[string]string{"error": err.Error()}, http.StatusBadRequest)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 
 	// Check if the component exists
 	component, err := h.deviceService.GetComponentByID(ComponentID)
 	if err != nil {
-		utils.RespondWithError(writer, http.StatusInternalServerError, "Error getting component", map[string]string{"error": err.Error()})
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error getting component", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 	if component == nil {
-		utils.RespondWithError(writer, http.StatusNotFound, "component not found", nil)
+		apiErr := models.NewAPIError(models.ErrorCodeNotFound, "component not found", nil, http.StatusNotFound)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 
@@ -352,26 +386,36 @@ func (h *DeviceHandler) MarkcomponentLogsAsRead(writer http.ResponseWriter, requ
 	userID, err := utils.GetUserIDFromContext(request.Context())
 	if err != nil {
 		log.Printf("Failed to retrieve user ID: %v", err)
-		http.Error(writer, "Unauthorized", http.StatusUnauthorized)
+		apiErr := models.NewAPIError(models.ErrorCodeUnauthorized, "Unauthorized", nil, http.StatusUnauthorized)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 	_, err = h.deviceService.UserHasAccessTocomponent(userID, ComponentID)
 	if err != nil {
-		utils.RespondWithError(writer, http.StatusInternalServerError, "Error checking user access to component", map[string]string{"error": err.Error()})
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error checking user access to component", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 
 	// beggin transaction
 	tx, err := h.deviceService.BeginTransaction()
 	if err != nil {
-		utils.RespondWithError(writer, http.StatusInternalServerError, "Error starting transaction",
-			map[string]string{"error": err.Error()})
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error starting transaction", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
+	defer tx.Rollback()
 
 	// Mark the logs as read
 	if err := h.deviceService.MarkcomponentLogsAsRead(tx, ComponentID, payload.LogIDs); err != nil {
-		utils.RespondWithError(writer, http.StatusInternalServerError, "Error marking component logs as read", map[string]string{"error": err.Error()})
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error marking component logs as read", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
+		utils.RespondWithError(writer, apiErr)
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error committing transaction", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 
@@ -381,35 +425,48 @@ func (h *DeviceHandler) MarkcomponentLogsAsRead(writer http.ResponseWriter, requ
 
 func (h *DeviceHandler) MarkAllLogsAsRead(writer http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodPost {
-		utils.RespondWithError(writer, http.StatusMethodNotAllowed, "Method not allowed", nil)
+		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 	// create transaction
 	tx, err := h.deviceService.BeginTransaction()
 	if err != nil {
-		utils.RespondWithError(writer, http.StatusInternalServerError, "Error starting transaction",
-			map[string]string{"error": err.Error()})
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error starting transaction", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
+	defer tx.Rollback()
 	// Get the userId
 	userID, err := utils.GetUserIDFromContext(request.Context())
 	if err != nil {
 		log.Printf("Failed to retrieve user ID: %v", err)
-		http.Error(writer, "Unauthorized", http.StatusUnauthorized)
+		apiErr := models.NewAPIError(models.ErrorCodeUnauthorized, "Unauthorized", nil, http.StatusUnauthorized)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 
 	err = h.deviceService.MarkAllLogsAsRead(tx, userID)
 	if err != nil {
-		utils.RespondWithError(writer, http.StatusInternalServerError, "Error marking all logs as read", map[string]string{"error": err.Error()})
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error marking all logs as read", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 	// commit transaction
 	if err := tx.Commit(); err != nil {
-		utils.RespondWithError(writer, http.StatusInternalServerError, "Error committing transaction",
-			map[string]string{"error": err.Error()})
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error committing transaction", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 	writer.WriteHeader(http.StatusOK)
 	writer.Write([]byte("All logs marked as read successfully")) // Could also use RespondWithJSON for consistency
+}
+
+func (h *DeviceHandler) CheckDeviceAccess(idInt int, id string) bool {
+	hasAccess, err := h.deviceService.CheckDeviceAccess(idInt, id)
+	if err != nil {
+		log.Printf("Error checking device access: %v", err)
+		return false
+	}
+	return hasAccess
 }

@@ -42,4 +42,5 @@ type DeviceDAO interface {
 	MarkcomponentLogsAsRead(tx *sql.Tx, ComponentID string, logIds []int) error // Updated to take tx
 	MarkAllLogsAsRead(tx *sql.Tx, userID int) error
 	UpdateComponentRunningHours(tx *sql.Tx, id string, hours int32) error
+	CheckDeviceAccess(idInt int, id string) (bool, error)
 }

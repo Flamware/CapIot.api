@@ -28,4 +28,8 @@ func SetupUserRoutes(r *mux.Router, userHandler *handlers.UserHandler) {
 
 	// Assign user to location
 	r.Handle("/api/assign-user/{userID}", middleware.JWTAuthMiddleware(http.HandlerFunc(userHandler.AsignUser))).Methods(http.MethodPost)
+
+	// Notifications
+	r.Handle("/api/notifications", middleware.JWTAuthMiddleware(http.HandlerFunc(userHandler.GetNotifications))).Methods(http.MethodGet)
+
 }

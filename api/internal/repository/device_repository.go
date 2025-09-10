@@ -764,3 +764,23 @@ func (d *PostgresDeviceDAO) UpdateComponentRunningHours(tx *sql.Tx, id string, h
 	}
 	return nil
 }
+
+// CheckDeviceAccess checks if a user has access to a specific device.
+func (d *PostgresDeviceDAO) CheckDeviceAccess(userID int, deviceID string) (bool, error) {
+	query := `
+	   SELECT EXISTS (
+		  SELECT 1
+		  FROM devices AS d
+		  JOIN device_location AS dl ON d.device_id = dl.device_id AND dl.is_current = TRUE
+		  JOIN locations AS l ON dl.location_id = l.location_id
+		  JOIN user_site AS us ON l.site_id = us.site_id
+		  WHERE us.user_id = $1 AND d.device_id = $2
+	   )
+	`
+	var hasAccess bool
+	err := d.db.QueryRow(query, userID, deviceID).Scan(&hasAccess)
+	if err != nil {
+		return false, fmt.Errorf("failed to check user access to device: %w", err)
+	}
+	return hasAccess, nil
+}

@@ -1,11 +1,10 @@
 package handlers
 
 import (
-	"CapIot-api/internal/middleware"
 	"CapIot-api/internal/models"
 	"CapIot-api/internal/service"
+	"CapIot-api/internal/utils"
 	"encoding/json"
-	"github.com/dgrijalva/jwt-go"
 	"github.com/gorilla/mux"
 	"log"
 	"net/http"
@@ -23,73 +22,32 @@ func NewLocationHandler(locationService service.LocationService) *LocationHandle
 	}
 }
 
-func (h *AdminHandler) GetAllLocations(writer http.ResponseWriter, request *http.Request) {
-	log.Printf("Received %s request for all locations", request.Method)
-
-	if request.Method != http.MethodGet {
-		log.Printf("Method %s not allowed...", request.Method)
-		http.Error(writer, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	// Get pagination parameters from query string
-	pageStr := request.URL.Query().Get("page")
-	limitStr := request.URL.Query().Get("limit")
-
-	page := 1
-	limit := 10 // Default page size
-
-	if pageStr != "" {
-		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
-			page = p
-		}
-	}
-
-	if limitStr != "" {
-		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 100 { // Add a reasonable max limit
-			limit = l
-		}
-	}
-
-	// Get the optional search parameter
-	searchTerm := request.URL.Query().Get("search")
-	// Call AuthService to get all locations
-	locations, err := h.locationService.GetAllLocations(request.Context(), page, limit, searchTerm)
-	if err != nil {
-		log.Printf("Failed to get all locations: %v", err)
-		http.Error(writer, "Failed to retrieve data", http.StatusInternalServerError)
-		return
-	}
-
-	writer.Header().Set("Content-Type", "application/json")
-	writer.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(writer).Encode(locations); err != nil {
-		log.Printf("Failed to encode response: %v", err)
-		http.Error(writer, "Failed to send response", http.StatusInternalServerError)
-	}
-}
-
 func (h *LocationHandler) CreateLocation(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 
 	// Ensure Content-Type is application/json
 	if r.Header.Get("Content-Type") != "application/json" {
-		http.Error(w, "Unsupported Content-Type", http.StatusUnsupportedMediaType)
+		apiErr := models.NewAPIError(models.ErrorCodeUnsupportedMediaType, "Unsupported Content-Type", nil, http.StatusUnsupportedMediaType)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 
 	// Decode JSON body into Location struct
 	var location models.Location
 	if err := json.NewDecoder(r.Body).Decode(&location); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Invalid JSON", map[string]string{"error": err.Error()}, http.StatusBadRequest)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 
 	// Validate input
 	if location.Name == nil || *location.Name == "" {
-		http.Error(w, "Location name is required", http.StatusBadRequest)
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Location name is required", nil, http.StatusBadRequest)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 	if location.Description == nil {
@@ -101,7 +59,8 @@ func (h *LocationHandler) CreateLocation(w http.ResponseWriter, r *http.Request)
 
 	// Call service to create location
 	if err := h.locationService.CreateLocation(location); err != nil {
-		http.Error(w, "Error creating location", http.StatusInternalServerError)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error creating location", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 
@@ -111,59 +70,58 @@ func (h *LocationHandler) CreateLocation(w http.ResponseWriter, r *http.Request)
 
 func (h *LocationHandler) GetComponentsByLocationID(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 
 	vars := mux.Vars(r)
 	locationId, ok := vars["locationId"]
 	if !ok {
-		http.Error(w, "Missing location ID in path", http.StatusBadRequest)
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Missing location ID in path", nil, http.StatusBadRequest)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 
 	components, err := h.locationService.GetComponentsByLocationID(locationId)
 	if err != nil {
-		http.Error(w, "Error getting components", http.StatusInternalServerError)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error getting components", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(components); err != nil {
-		http.Error(w, "Error encoding response", http.StatusInternalServerError)
-		return
-	}
+	utils.RespondWithJSON(w, http.StatusOK, components)
 }
 
 func (h *LocationHandler) GetDevicesByLocationID(writer http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodGet {
-		http.Error(writer, "Method not allowed", http.StatusMethodNotAllowed)
+		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 
 	vars := mux.Vars(request)
 	locationId, ok := vars["locationId"]
 	if !ok {
-		http.Error(writer, "Missing location ID in path", http.StatusBadRequest)
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Missing location ID in path", nil, http.StatusBadRequest)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 
 	devices, err := h.locationService.GetDevicesByLocationID(locationId)
 	if err != nil {
-		http.Error(writer, "Error getting devices", http.StatusInternalServerError)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error getting devices", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 
-	writer.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(writer).Encode(devices); err != nil {
-		http.Error(writer, "Error encoding response", http.StatusInternalServerError)
-		return
-	}
+	utils.RespondWithJSON(writer, http.StatusOK, devices)
 }
 
 func (h *LocationHandler) GetAllLocations(writer http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodGet {
-		http.Error(writer, "Method not allowed", http.StatusMethodNotAllowed)
+		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 
@@ -191,38 +149,38 @@ func (h *LocationHandler) GetAllLocations(writer http.ResponseWriter, request *h
 	// Call AuthService to get all locations
 	locations, err := h.locationService.GetAllLocations(request.Context(), page, limit, searchTerm)
 	if err != nil {
-		log.Printf("Failed to get all locations: %v", err)
-		http.Error(writer, "Failed to retrieve data", http.StatusInternalServerError)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Failed to retrieve data", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 
-	writer.Header().Set("Content-Type", "application/json")
-	writer.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(writer).Encode(locations); err != nil {
-		log.Printf("Failed to encode response: %v", err)
-		http.Error(writer, "Failed to send response", http.StatusInternalServerError)
-	}
+	utils.RespondWithJSON(writer, http.StatusOK, locations)
 }
+
 func (h *LocationHandler) CreateSite(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 
 	if r.Header.Get("Content-Type") != "application/json" {
-		http.Error(w, "Unsupported Content-Type", http.StatusUnsupportedMediaType)
+		apiErr := models.NewAPIError(models.ErrorCodeUnsupportedMediaType, "Unsupported Content-Type", nil, http.StatusUnsupportedMediaType)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 
 	var site models.Site
 	if err := json.NewDecoder(r.Body).Decode(&site); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Invalid JSON", map[string]string{"error": err.Error()}, http.StatusBadRequest)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 
 	// Validate input
 	if site.Name == nil || *site.Name == "" {
-		http.Error(w, "Site name is required", http.StatusBadRequest)
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Site name is required", nil, http.StatusBadRequest)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 
@@ -231,40 +189,40 @@ func (h *LocationHandler) CreateSite(w http.ResponseWriter, r *http.Request) {
 	// Call service to create site
 	createdSite, err := h.locationService.CreateSite(r.Context(), site)
 	if err != nil {
-		http.Error(w, "Error creating site", http.StatusInternalServerError)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error creating site", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 
-	// Send back the created site as a JSON response
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	if err := json.NewEncoder(w).Encode(createdSite); err != nil {
-		http.Error(w, "Failed to write response", http.StatusInternalServerError)
-	}
+	utils.RespondWithJSON(w, http.StatusCreated, createdSite)
 }
 
 // DeleteSite handles DELETE requests to remove a site by its ID.
 func (h *LocationHandler) DeleteSite(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 
 	vars := mux.Vars(r)
 	idStr, ok := vars["siteID"]
 	if !ok {
-		http.Error(w, "Missing site ID in path", http.StatusBadRequest)
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Missing site ID in path", nil, http.StatusBadRequest)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		http.Error(w, "Invalid site ID", http.StatusBadRequest)
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Invalid site ID", map[string]string{"error": err.Error()}, http.StatusBadRequest)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 
 	if err := h.locationService.DeleteSite(r.Context(), id); err != nil {
-		http.Error(w, "Error deleting site", http.StatusInternalServerError)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error deleting site", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 
@@ -273,7 +231,8 @@ func (h *LocationHandler) DeleteSite(w http.ResponseWriter, r *http.Request) {
 
 func (h *LocationHandler) GetSitesWithPagination(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 
@@ -301,22 +260,18 @@ func (h *LocationHandler) GetSitesWithPagination(w http.ResponseWriter, r *http.
 
 	sitesData, err := h.locationService.GetSitesWithPagination(r.Context(), page, limit, searchTerm)
 	if err != nil {
-		log.Printf("Failed to get sites with pagination: %v", err)
-		http.Error(w, "Failed to retrieve data", http.StatusInternalServerError)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Failed to retrieve data", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(sitesData); err != nil {
-		log.Printf("Failed to encode response: %v", err)
-		http.Error(w, "Failed to send response", http.StatusInternalServerError)
-	}
+	utils.RespondWithJSON(w, http.StatusOK, sitesData)
 }
 
 func (h *LocationHandler) GetLocationsBySiteIDs(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 
@@ -324,7 +279,8 @@ func (h *LocationHandler) GetLocationsBySiteIDs(w http.ResponseWriter, r *http.R
 	query := r.URL.Query()
 	siteIdsParam := query.Get("site_ids")
 	if siteIdsParam == "" {
-		http.Error(w, "Missing site_ids query parameter", http.StatusBadRequest)
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Missing site_ids query parameter", nil, http.StatusBadRequest)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 
@@ -355,29 +311,21 @@ func (h *LocationHandler) GetLocationsBySiteIDs(w http.ResponseWriter, r *http.R
 		term = ""
 	}
 
-	// Extract user ID from JWT claims
-	userClaims, ok := r.Context().Value(middleware.UserClaimsContextKey).(jwt.MapClaims)
-	if !ok {
-		http.Error(w, "Invalid user claims", http.StatusInternalServerError)
-		return
-	}
-	userIDFloat, ok := userClaims["id"].(float64)
-	if !ok {
-		http.Error(w, "Invalid user ID", http.StatusInternalServerError)
-		return
-	}
-	userID := int64(userIDFloat)
-
 	// Call service with validated site IDs + user + pagination + search term
-	locations, err := h.locationService.GetLocationsBySiteIDs(r.Context(), siteIDs, userID, page, limit, term)
+	locations, err := h.locationService.GetLocationsBySiteIDs(r.Context(), siteIDs, page, limit, term)
 	if err != nil {
-		http.Error(w, "Error getting locations", http.StatusInternalServerError)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error getting locations", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(locations); err != nil {
-		http.Error(w, "Error encoding response", http.StatusInternalServerError)
-		return
-	}
+	utils.RespondWithJSON(w, http.StatusOK, locations)
+}
+
+func (h *LocationHandler) CheckSiteAccess(id int, idInt int64) (bool, error) {
+	return h.locationService.CheckUserAccessToSite(id, idInt)
+}
+
+func (h *LocationHandler) CheckLocationAccess(id int, id2 int64) (bool, error) {
+	return h.locationService.CheckUserAccessToLocation(id, id2)
 }

@@ -442,21 +442,22 @@ func (r *PostgresLocationRepository) GetDevicesByLocationID(id string) ([]models
 }
 
 // CheckUserAccessToLocation checks if a user has access to a location.
-func (r *PostgresLocationRepository) CheckUserAccessToLocation(userID int64, locationID string) (bool, error) {
+func (r *PostgresLocationRepository) CheckUserAccessToLocation(userID int, locationID int64) (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	query := `SELECT 1
 	FROM users u
-	JOIN device_location dl ON u.id = dl.id
-	WHERE u.id = $1 AND dl.location_id = $2
+	JOIN user_site us ON u.id = us.user_id
+	JOIN locations l ON us.site_id = l.site_id
+	WHERE u.id = $1 AND l.location_id = $2
 	LIMIT 1`
-
 	var exists int
 	err := r.db.QueryRowContext(ctx, query, userID, locationID).Scan(&exists)
 	if err == sql.ErrNoRows {
 		return false, nil
-	} else if err != nil {
+	}
+	if err != nil {
 		log.Printf("Error checking user access to location: %v\n", err)
 		return false, err
 	}
@@ -464,7 +465,7 @@ func (r *PostgresLocationRepository) CheckUserAccessToLocation(userID int64, loc
 }
 
 // CheckUserAccessToSite checks if a user has access to a site.
-func (r *PostgresLocationRepository) CheckUserAccessToSite(userID int64, siteID int64) (bool, error) {
+func (r *PostgresLocationRepository) CheckUserAccessToSite(userID int, siteID int64) (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 

@@ -425,11 +425,7 @@ func (h *MqttHandler) HandleDeviceAlert(client mqtt.Client, message mqtt.Message
 	if payload.DeviceID != deviceIDFromTopic {
 		log.Printf("Warning: DeviceID mismatch between topic (%s) and payload (%s) for alert on topic %s\n",
 			deviceIDFromTopic, payload.DeviceID, message.Topic())
-		// Decide if you want to proceed or return here based on strictness
 	}
-
-	log.Printf("Received alert '%s' from device '%s' (component '%s', timestamp '%s').\n",
-		payload.Alert, payload.DeviceID, payload.ComponentID, payload.Timestamp)
 
 	// Begin a transaction for alert handling (e.g., logging to DB)
 	tx, err := h.deviceService.BeginTransaction()
@@ -448,7 +444,6 @@ func (h *MqttHandler) HandleDeviceAlert(client mqtt.Client, message mqtt.Message
 		}
 	}()
 
-	// Pass payload data to the service handler
 	// Pass the transaction to the service method
 	if err = h.deviceService.HandleDeviceAlert(tx, payload.ComponentID, payload.Alert); err != nil { // Assuming this matches your service interface
 		log.Printf("Error handling device alert for component '%s': %v", payload.ComponentID, err)
@@ -486,8 +481,6 @@ func (h *MqttHandler) HandleRunningHours(client mqtt.Client, message mqtt.Messag
 			deviceID, payload.DeviceID, message.Topic())
 		// You might choose to return here if a mismatch is critical. For now, we'll proceed with topic's deviceID.
 	}
-
-	log.Printf("Received running hours '%d' for component '%s' from device '%s'.\n", payload.Hours, payload.ComponentID, deviceID)
 
 	// Begin a transaction for running hours update
 	tx, err := h.deviceService.BeginTransaction()

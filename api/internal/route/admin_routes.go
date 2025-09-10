@@ -8,7 +8,7 @@ import (
 	"net/http"
 )
 
-// SetupAdminRoutes sets up the admin-protected route
+// SetupRoleBasedRoutes configures API routes with specific role-based access.
 func SetupAdminRoutes(r *mux.Router,
 	adminHandler *handlers.AdminHandler,
 	userHandler *handlers.UserHandler,
@@ -16,59 +16,79 @@ func SetupAdminRoutes(r *mux.Router,
 	deviceHandler *handlers.DeviceHandler,
 	mqttHandler *handlers.MqttHandler,
 	authService service.AuthService) {
-	adminRouter := r.PathPrefix("/api/admin").Subrouter()
 
-	// Apply JWTAuthMiddleware to all routes under /api/admin
-	adminRouter.Use(middleware.JWTAuthMiddleware)
+	// A single subrouter for all API routes that require authentication
+	apiRouter := r.PathPrefix("/api").Subrouter()
 
-	// Apply RoleCheckMiddleware for "admin" role to all routes under /api/admin
-	adminRouter.Use(middleware.RoleCheckMiddleware(authService, "admin"))
+	// Apply JWTAuthMiddleware to all routes under /api
+	apiRouter.Use(middleware.JWTAuthMiddleware)
 
-	// Admin Test Route
+	// --- Routes accessible by 'admin' role ONLY ---
+	// Create a sub-subrouter for admin-only routes to avoid repeating middleware
+	adminRouter := apiRouter.PathPrefix("/admin").Subrouter()
+	adminRouter.Use(middleware.RoleCheckMiddleware(authService, []string{"admin"}))
+
+	// Admin Test Route (admin only)
 	adminRouter.HandleFunc("/test", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("Admin access granted"))
 	}).Methods(http.MethodGet)
 
-	// --- User Routes ---
-	// Define the handler for updating a user and their locations
+	// --- User Routes (admin only) ---
 	adminRouter.HandleFunc("/users/{userID}", userHandler.UpdateUserAndLocation).Methods(http.MethodPut)
-	// Define the handler for getting all the sites associated with a user
 	adminRouter.HandleFunc("/users/{userID}/sites", userHandler.GetUserSites).Methods(http.MethodGet)
-	// Define the handler for getting users with pagination and search
 	adminRouter.HandleFunc("/users", userHandler.GetUsers).Methods(http.MethodGet)
 
-	// --- Site & Location Routes ---
-	// Define the handler for getting sites with pagination
-	adminRouter.HandleFunc("/sites", locationHandler.GetSitesWithPagination).Methods(http.MethodGet)
-	// Define the handler for creating a site
+	// --- Site Routes (admin only) ---
 	adminRouter.HandleFunc("/site/create", locationHandler.CreateSite).Methods(http.MethodPost)
-	// Define the handler for deleting a site
 	adminRouter.HandleFunc("/site/{siteID}", locationHandler.DeleteSite).Methods(http.MethodDelete)
-	// Define the handler for getting all locations
-	adminRouter.HandleFunc("/locations", locationHandler.GetAllLocations).Methods(http.MethodGet)
-	// Define the handler for creating a location
-	adminRouter.HandleFunc("/location/create", locationHandler.CreateLocation).Methods(http.MethodPost)
-	// Define the handler for modifying a location
-	adminRouter.HandleFunc("/location/{locationID}", adminHandler.ModifyLocation).Methods(http.MethodPut)
-	// Define the handler for deleting a location
-	adminRouter.HandleFunc("/location/{locationID}", adminHandler.DeleteLocation).Methods(http.MethodDelete)
 
-	// --- Device Routes ---
-	// Define the handler for getting all devices with their components and locations
-	adminRouter.HandleFunc("/devices-components-locations", adminHandler.GetDevicescomponentsLocations).Methods(http.MethodGet)
-	// Define the handler for getting all locations with their devices and users
-	adminRouter.HandleFunc("/locations-devices-users", adminHandler.GetLocationsDevicesUsers).Methods(http.MethodGet)
-	// Define the handler for assigning a device to a location
-	adminRouter.HandleFunc("/assign-device", adminHandler.AssignDeviceToLocation).Methods(http.MethodPost)
-	// Define the handler for deleting a device
-	adminRouter.HandleFunc("/device/{deviceID}", deviceHandler.DeleteDevice).Methods(http.MethodDelete)
-	// Define the handler for updating a device's component range
-	adminRouter.HandleFunc("/devices/{deviceID}/components/{ComponentID}/range", deviceHandler.UpdatecomponentRange).Methods(http.MethodPut)
-	// Define the handler for getting all components of a device
-	adminRouter.HandleFunc("/devices/{deviceID}/components", deviceHandler.GetcomponentsByDeviceID).Methods(http.MethodGet)
+	// --- Routes accessible by 'admin' and 'operateur' roles ---
 
-	// --- MQTT & Device Status Routes ---
-	// Define the handler for starting/stopping monitoring for a device
-	adminRouter.HandleFunc("/devices/{deviceID}", mqttHandler.SetStatus).Methods(http.MethodPatch)
+	// The `RoleCheckMiddleware` is applied directly to each handler function
+	// with a list of allowed roles, giving you fine-grained control.
+
+	// Site Routes
+	apiRouter.Handle("/sites",
+		middleware.RoleCheckMiddleware(authService, []string{"admin", "operateur"})(http.HandlerFunc(locationHandler.GetSitesWithPagination)),
+	).Methods(http.MethodGet)
+
+	// Location Routes
+	apiRouter.Handle("/locations",
+		middleware.RoleCheckMiddleware(authService, []string{"admin", "operateur"})(http.HandlerFunc(locationHandler.GetAllLocations)),
+	).Methods(http.MethodGet)
+	apiRouter.Handle("/location/create",
+		middleware.RoleCheckMiddleware(authService, []string{"admin"})(http.HandlerFunc(locationHandler.CreateLocation)),
+	).Methods(http.MethodPost)
+	apiRouter.Handle("/location/{locationID}",
+		middleware.RoleCheckMiddleware(authService, []string{"admin", "operateur"})(http.HandlerFunc(adminHandler.ModifyLocation)),
+	).Methods(http.MethodPut)
+	apiRouter.Handle("/location/{locationID}",
+		middleware.RoleCheckMiddleware(authService, []string{"admin"})(http.HandlerFunc(adminHandler.DeleteLocation)),
+	).Methods(http.MethodDelete)
+
+	// Device Routes
+	apiRouter.Handle("/devices-components-locations",
+		middleware.RoleCheckMiddleware(authService, []string{"admin", "operateur"})(http.HandlerFunc(adminHandler.GetDevicescomponentsLocations)),
+	).Methods(http.MethodGet)
+	apiRouter.Handle("/locations-devices-users",
+		middleware.RoleCheckMiddleware(authService, []string{"admin", "operateur"})(http.HandlerFunc(adminHandler.GetLocationsDevicesUsers)),
+	).Methods(http.MethodGet)
+	apiRouter.Handle("/assign-device",
+		middleware.RoleCheckMiddleware(authService, []string{"admin"})(http.HandlerFunc(adminHandler.AssignDeviceToLocation)),
+	).Methods(http.MethodPost)
+	apiRouter.Handle("/device/{deviceID}",
+		middleware.RoleCheckMiddleware(authService, []string{"admin"})(http.HandlerFunc(deviceHandler.DeleteDevice)),
+	).Methods(http.MethodDelete)
+	apiRouter.Handle("/devices/{deviceID}/components/{ComponentID}/range",
+		middleware.RoleCheckMiddleware(authService, []string{"admin", "operateur"})(http.HandlerFunc(deviceHandler.UpdatecomponentRange)),
+	).Methods(http.MethodPut)
+	apiRouter.Handle("/devices/{deviceID}/components",
+		middleware.RoleCheckMiddleware(authService, []string{"admin", "operateur"})(http.HandlerFunc(deviceHandler.GetcomponentsByDeviceID)),
+	).Methods(http.MethodGet)
+
+	// MQTT & Device Status Routes
+	apiRouter.Handle("/devices/{deviceID}",
+		middleware.RoleCheckMiddleware(authService, []string{"admin", "operateur"})(http.HandlerFunc(mqttHandler.SetStatus)),
+	).Methods(http.MethodPatch)
 }

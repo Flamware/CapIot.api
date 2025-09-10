@@ -35,6 +35,7 @@ type DeviceService interface {
 	GetLocationByDeviceID(id string) (*models.Location, error)                                                           // Read-only, no tx
 	GetDevicescomponentsLocations(ctx context.Context, page int, limit int, term string) (map[string]interface{}, error) // Read-only, no tx
 	SetDeviceToLocation(ctx context.Context, deviceID string, locationID int) error
+	CheckDeviceAccess(idInt int, id string) (bool, error)
 
 	// Component operations
 	CreateComponent(tx *sql.Tx, component *models.Component) (*models.Component, error)                         // Now takes a transaction
@@ -53,7 +54,7 @@ type DeviceService interface {
 	UserHasAccessTocomponent(id int, id2 string) (bool, error)                                      // Read-only, no tx
 	MarkcomponentLogsAsRead(tx *sql.Tx, ComponentID string, logIds []int) error                     // Updated to take tx
 	MarkAllLogsAsRead(tx *sql.Tx, userID int) error
-	UpdateComponentRunningHours(tx *sql.Tx, id string, hours int32) error // Updated to take tx
+	UpdateComponentRunningHours(tx *sql.Tx, id string, hours int32) error
 }
 
 // DefaultDeviceService implements the DeviceService interface
@@ -243,7 +244,6 @@ func (s *DefaultDeviceService) UpdateDeviceComponentStatus(tx *sql.Tx, id string
 	if err != nil {
 		return fmt.Errorf("error updating component status for ID '%s': %w", id, err)
 	}
-	log.Printf("Successfully updated component status for component ID: '%s' to status: '%s' within transaction.", id, status)
 	return nil
 }
 
@@ -404,7 +404,6 @@ func (s *DefaultDeviceService) MarkAllLogsAsRead(tx *sql.Tx, userId int) error {
 }
 
 func (s *DefaultDeviceService) UpdateComponentRunningHours(tx *sql.Tx, id string, hours int32) error {
-	log.Printf("Updating running hours for component ID: '%s' to hours: '%d' within transaction.", id, hours)
 	if strings.TrimSpace(id) == "" || hours < 0 {
 		return fmt.Errorf("component ID cannot be empty and hours must be non-negative")
 	}
@@ -412,6 +411,9 @@ func (s *DefaultDeviceService) UpdateComponentRunningHours(tx *sql.Tx, id string
 	if err != nil {
 		return fmt.Errorf("error updating running hours for component ID '%s': %w", id, err)
 	}
-	log.Printf("Successfully updated running hours for component ID: '%s' to hours: '%d' within transaction.", id, hours)
 	return nil
+}
+
+func (s *DefaultDeviceService) CheckDeviceAccess(idInt int, id string) (bool, error) {
+	return s.deviceDAO.CheckDeviceAccess(idInt, id)
 }
