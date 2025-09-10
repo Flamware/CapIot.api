@@ -20,4 +20,5 @@ type UserDAO interface {
 	GetUsers(ctx context.Context, limit int, offset int, term string) ([]*models.User, error)
 	UpdateUserSites(ctx context.Context, userID int, siteIDs []int) error
 	GetUserLocations(ctx context.Context, userID int) ([]models.Location, error)
+	GetUsernameByAuth0ID(ctx context.Context, id string) (string, error)
 }

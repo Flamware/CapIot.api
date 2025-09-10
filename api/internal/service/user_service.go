@@ -19,7 +19,6 @@ type UserService interface {
 	UpdateUserSites(ctx context.Context, userID int, siteIDs []int, newName string) error
 	GetUsers(ctx context.Context, page int, limit int, term string) (map[string]interface{}, error)
 	GetUserLocations(ctx context.Context, userID int) ([]models.Location, error)
-	GetNotifications(ctx context.Context, userID int) (map[string]interface{}, error)
 }
 
 // DefaultUserService is the concrete implementation of the UserService interface
@@ -146,5 +145,3 @@ func (s *DefaultUserService) GetUserSites(ctx context.Context, id int) ([]models
 	}
 	return sites, nil
 }
-
-// GetNotifications retrieves all notifications for a user with pagination

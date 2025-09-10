@@ -18,6 +18,7 @@ func SetupRouter(
 	mqttHandler *handlers.MqttHandler,
 	authService service.AuthService, // Add authService as a parameter
 	adminHandler *handlers.AdminHandler,
+	notificationHandler *handlers.NotificationHandler,
 	mqttClient mqtt.Client,
 ) *mux.Router {
 	r := mux.NewRouter()
@@ -49,5 +50,6 @@ func SetupRouter(
 	SetupUserRoutes(r, userHandler)
 	SetupMQTTRoutes(mqttClient, mqttHandler)
 	SetupAdminRoutes(r, adminHandler, userHandler, locationHandler, deviceHandler, mqttHandler, authService) // Pass the authService directly
+	SetupNotificationsRoute(r, notificationHandler)
 	return r
 }

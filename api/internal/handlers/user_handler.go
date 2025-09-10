@@ -3,6 +3,7 @@ package handlers
 
 import (
 	"CapIot-api/internal/config"
+	"CapIot-api/internal/models"
 	"CapIot-api/internal/service"
 	"encoding/json"
 	"github.com/dgrijalva/jwt-go"
@@ -308,9 +309,8 @@ func (h *UserHandler) GetMySites(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// getNotifications retrieves notifications for the current user with Lazy Loading
-func (h *UserHandler) GetNotifications(w http.ResponseWriter, r *http.Request) {
-	// Extract the user ID from the JWT claims
+func (h *UserHandler) ChangeUsername(w http.ResponseWriter, r *http.Request) {
+	// Extract the user ID from the URL parameters
 	userClaims, ok := r.Context().Value(config.UserClaimsContextKey).(jwt.MapClaims)
 	if !ok {
 		http.Error(w, "Invalid user claims", http.StatusInternalServerError)
@@ -318,39 +318,53 @@ func (h *UserHandler) GetNotifications(w http.ResponseWriter, r *http.Request) {
 	}
 	userIDFloat, ok := userClaims["id"].(float64)
 	if !ok {
-		http.Error(w, "Invalid user ID", http.StatusInternalServerError)
+		apiError := models.APIError{
+			Code:    models.ErrorCodeInternalServerError,
+			Message: "Invalid user ID",
+		}
+		http.Error(w, apiError.Message, http.StatusInternalServerError)
 		return
 	}
 	userID := int(userIDFloat)
-
-	// Get pagination parameters from query string
-	pageStr := r.URL.Query().Get("page")
-	limitStr := r.URL.Query().Get("limit")
-
-	page := 1
-	limit := 10 // Default page size
-
-	if pageStr != "" {
-		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
-			page = p
-		}
+	var requestBody struct {
+		Name string `json:"name"`
 	}
-
-	if limitStr != "" {
-		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 100 { // Add a reasonable max limit
-			limit = l
+	if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
+		apiError := models.APIError{
+			Code:    models.ErrorCodeBadRequest,
+			Message: "Invalid request body",
 		}
-	}
-
-	notifications, err := h.userService.GetNotifications(r.Context(), userID, page, limit)
-	if err != nil {
-		http.Error(w, "Error getting notifications", http.StatusInternalServerError)
+		http.Error(w, apiError.Message, http.StatusBadRequest)
 		return
 	}
-
+	if requestBody.Name == "" {
+		apiError := models.APIError{
+			Code:    models.ErrorCodeBadRequest,
+			Message: "Name cannot be empty",
+		}
+		http.Error(w, apiError.Message, http.StatusBadRequest)
+		return
+	}
+	user := models.User{
+		ID:   userID,
+		Name: &requestBody.Name,
+	}
+	updatedUser, err := h.userService.UpdateUser(r.Context(), user)
+	if err != nil {
+		apiError := models.APIError{
+			Code:    models.ErrorCodeInternalServerError,
+			Message: "Failed to update user",
+		}
+		http.Error(w, apiError.Message, http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(notifications); err != nil {
-		http.Error(w, "Error encoding response", http.StatusInternalServerError)
+	if err := json.NewEncoder(w).Encode(updatedUser); err != nil {
+		apiError := models.APIError{
+			Code:    models.ErrorCodeInternalServerError,
+			Message: "Error encoding response",
+		}
+		http.Error(w, apiError.Message, http.StatusInternalServerError)
 		return
 	}
 }

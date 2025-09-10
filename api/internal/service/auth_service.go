@@ -70,31 +70,19 @@ func (s *DefaultAuthService) Login(ctx context.Context, email, password string) 
 	}
 
 	// Look for user's locations
-	locations, err := s.userRepo.GetUserLocations(ctx, userID)
+	username, err := s.userRepo.GetUsernameByAuth0ID(ctx, authResult.Auth0ID)
 	if err != nil {
-		return "", fmt.Errorf("failed to get user locations: %w", err)
+		return "", fmt.Errorf("failed to get username: %w", err)
+	}
+	if username == "" {
+		username = "User" // Default username if none is set
 	}
 
-	// Extract location IDs safely
-	locationIDs := make([]int, len(locations))
-	for i, location := range locations {
-		if location.ID != nil {
-			locationIDs[i] = *location.ID // Dereference the pointer to get the int value
-		} else {
-			// It's good practice to handle the case of a nil pointer, though this
-			// indicates a potential data integrity issue.
-			log.Printf("Location ID is nil for user %d at index %d", userID, i)
-		}
-	}
-
-	if len(locationIDs) == 0 {
-		log.Printf("No locations found for user %d", userID)
-	} else {
-		log.Printf("User %d has access to locations: %v", userID, locationIDs)
-	}
+	// Log the successful login
+	log.Printf("User %s logged in successfully with User ID: %d", authResult.Email, userID)
 
 	// Step 3: Generate the custom JWT token, including roles
-	customJWT, err := utils.GenerateCustomJWT(authResult, userID, locationIDs)
+	customJWT, err := utils.GenerateCustomJWT(authResult, username, userID)
 	if err != nil {
 		return "", err
 	}

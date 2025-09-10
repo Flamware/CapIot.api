@@ -17,6 +17,9 @@ func SetupUserRoutes(r *mux.Router, userHandler *handlers.UserHandler) {
 	// Get current user
 	r.Handle("/api/users/me", middleware.JWTAuthMiddleware(http.HandlerFunc(userHandler.GetCurrentUser))).Methods(http.MethodGet)
 
+	// Put current user
+	r.Handle("/api/users/me", middleware.JWTAuthMiddleware(http.HandlerFunc(userHandler.ChangeUsername))).Methods(http.MethodPut)
+
 	// Get locations of a user
 	r.Handle("/api/users/me/locations", middleware.JWTAuthMiddleware(http.HandlerFunc(userHandler.GetUserLocations))).Methods(http.MethodGet)
 
@@ -28,8 +31,5 @@ func SetupUserRoutes(r *mux.Router, userHandler *handlers.UserHandler) {
 
 	// Assign user to location
 	r.Handle("/api/assign-user/{userID}", middleware.JWTAuthMiddleware(http.HandlerFunc(userHandler.AsignUser))).Methods(http.MethodPost)
-
-	// Notifications
-	r.Handle("/api/notifications", middleware.JWTAuthMiddleware(http.HandlerFunc(userHandler.GetNotifications))).Methods(http.MethodGet)
 
 }

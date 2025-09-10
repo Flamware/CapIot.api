@@ -68,6 +68,23 @@ func (r *PostgresUserRepository) FindUserByID(ctx context.Context, ID int) (*mod
 	return &user, nil
 }
 
+func (r *PostgresUserRepository) GetUsernameByAuth0ID(ctx context.Context, id string) (string, error) {
+	query := `SELECT name FROM users WHERE auth0_id = $1`
+	var name sql.NullString
+	err := r.db.QueryRowContext(ctx, query, id).Scan(&name)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return "", nil
+		}
+		log.Printf("Error fetching username by Auth0 ID: %v\n", err)
+		return "", err
+	}
+	if name.Valid {
+		return name.String, nil
+	}
+	return "", nil
+}
+
 // UpdateUser updates a user in the database.
 func (r *PostgresUserRepository) UpdateUser(ctx context.Context, user models.User) (*models.User, error) {
 	query := `UPDATE users SET name = $1, email = $2 WHERE id = $3`

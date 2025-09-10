@@ -11,6 +11,10 @@ type DefaultLocationService struct {
 	dao dao.LocationDAO
 }
 
+func NewLocationService(dao dao.LocationDAO) *DefaultLocationService {
+	return &DefaultLocationService{dao: dao}
+}
+
 type LocationService interface {
 	CreateLocation(location models.Location) error
 	GetAllLocations(ctx context.Context, page int, limit int, term string) (map[string]interface{}, error)
@@ -25,10 +29,6 @@ type LocationService interface {
 	GetLocationsBySiteIDs(ctx context.Context, siteIDs []string, page int, limit int, term string) (map[string]interface{}, error)
 	CheckUserAccessToLocation(userID int, locationId int64) (bool, error)
 	CheckUserAccessToSite(userID int, siteID int64) (bool, error)
-}
-
-func NewLocationService(dao dao.LocationDAO) *DefaultLocationService {
-	return &DefaultLocationService{dao: dao}
 }
 
 func (s *DefaultLocationService) CreateLocation(location models.Location) error {

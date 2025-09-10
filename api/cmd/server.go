@@ -36,6 +36,7 @@ func main() {
 	userRepo := repository.NewPostgresUserRepository(db)
 	deviceRepo := repository.NewPostgresDeviceDAO(db)
 	locationRepo := repository.NewPostgresLocationRepository(db)
+	notificationRepo := repository.NewPostgresNotificationDAO(db)
 
 	// MQTT client setup.
 	mqttBroker := os.Getenv("MQTT_BROKER")
@@ -70,12 +71,15 @@ func main() {
 	authService := service.NewAuthService(authRepo, userRepo, deviceRepo)
 	locationService := service.NewLocationService(locationRepo)
 	userService := service.NewUserService(userRepo, authRepo)
+	notificationService := service.NewNotificationService(notificationRepo)
 
 	// Initialize handlers
 	authHandler := handlers.NewAuthHandler(authService)
 	deviceHandler := handlers.NewDeviceHandler(deviceService)
 	locationHandler := handlers.NewLocationHandler(locationService)
 	userHandler := handlers.NewUserHandler(userService)
+	notificationHandler := handlers.NewNotificationHandler(notificationService)
+
 	adminHandler := handlers.NewAdminHandler(
 		authService,
 		userService,
@@ -92,7 +96,9 @@ func main() {
 		mqttHandler,
 		authService,
 		adminHandler,
-		client)
+		notificationHandler,
+		client,
+	)
 
 	// CORS setup
 	c := cors.New(cors.Options{
