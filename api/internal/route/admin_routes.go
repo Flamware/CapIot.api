@@ -88,7 +88,7 @@ func SetupAdminRoutes(r *mux.Router,
 	).Methods(http.MethodGet)
 
 	// MQTT & Device Status Routes
-	apiRouter.Handle("/devices/{deviceID}",
-		middleware.RoleCheckMiddleware(authService, []string{"admin", "operateur"})(http.HandlerFunc(mqttHandler.SetStatus)),
+	apiRouter.Handle("/devices/{deviceID}/comand",
+		middleware.RoleCheckMiddleware(authService, []string{"admin", "operateur"})(http.HandlerFunc(mqttHandler.Command)),
 	).Methods(http.MethodPatch)
 }

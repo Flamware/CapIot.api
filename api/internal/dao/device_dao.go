@@ -43,4 +43,5 @@ type DeviceDAO interface {
 	MarkAllLogsAsRead(tx *sql.Tx, userID int) error
 	UpdateComponentRunningHours(tx *sql.Tx, id string, hours int32) error
 	CheckDeviceAccess(idInt int, id string) (bool, error)
+	GetSensorsByDeviceID(id string) ([]*models.Component, error)
 }

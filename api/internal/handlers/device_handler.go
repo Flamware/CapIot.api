@@ -470,3 +470,25 @@ func (h *DeviceHandler) CheckDeviceAccess(idInt int, id string) bool {
 	}
 	return hasAccess
 }
+
+func (h *DeviceHandler) GetSensorsByDeviceID(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodGet {
+		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
+		utils.RespondWithError(writer, apiErr)
+		return
+	}
+	vars := mux.Vars(request)
+	deviceID, ok := vars["deviceID"]
+	if !ok {
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Missing device ID in path", nil, http.StatusBadRequest)
+		utils.RespondWithError(writer, apiErr)
+		return
+	}
+	sensors, err := h.deviceService.GetSensorsByDeviceID(deviceID)
+	if err != nil {
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error getting sensors", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
+		utils.RespondWithError(writer, apiErr)
+		return
+	}
+	utils.RespondWithJSON(writer, http.StatusOK, sensors)
+}

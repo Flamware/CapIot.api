@@ -784,3 +784,57 @@ func (d *PostgresDeviceDAO) CheckDeviceAccess(userID int, deviceID string) (bool
 	}
 	return hasAccess, nil
 }
+
+// GetSensorsByDeviceID retrieves all sensor components linked to a specific device.
+func (d *PostgresDeviceDAO) GetSensorsByDeviceID(id string) ([]*models.Component, error) {
+	rows, err := d.db.Query(`
+		SELECT c.component_id, c.component_name, c.component_type, c.component_subtype,
+		       			   c.component_status, c.min_threshold, c.max_threshold, c.max_running_hours,
+		       			   c.current_running_hours
+		FROM public.components c
+		JOIN public.device_components dc ON c.component_id = dc.component_id
+		WHERE dc.device_id = $1 AND dc.removal_date IS NULL AND c.component_type = 'sensor'
+	`, id)
+	if err != nil {
+		return nil, fmt.Errorf("error querying sensor components for device %s: %w", id, err)
+	}
+	defer rows.Close()
+
+	var components []*models.Component
+	for rows.Next() {
+		var component models.Component
+		var minThreshold, maxThreshold sql.NullFloat64
+		var maxRunningHours sql.NullInt32
+
+		err := rows.Scan(
+			&component.ComponentID,
+			&component.ComponentName,
+			&component.ComponentType,
+			&component.ComponentSubtype,
+			&component.ComponentStatus,
+			&minThreshold,
+			&maxThreshold,
+			&maxRunningHours,
+			&component.CurrentRunningHours,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("error scanning sensor component row for device %s: %w", id, err)
+		}
+		if minThreshold.Valid {
+			component.MinThreshold = &minThreshold.Float64
+		}
+		if maxThreshold.Valid {
+			component.MaxThreshold = &maxThreshold.Float64
+		}
+		if maxRunningHours.Valid {
+			component.MaxRunningHours = &maxRunningHours.Int32
+		}
+		components = append(components, &component)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating sensor component rows for device %s: %w", id, err)
+	}
+
+	return components, nil
+}

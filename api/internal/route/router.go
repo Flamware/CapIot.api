@@ -46,7 +46,7 @@ func SetupRouter(
 
 	SetupAuthRoutes(r, authHandler)
 	SetupLocationRoutes(r, locationHandler)
-	SetupDeviceRoute(r, deviceHandler)
+	SetupDeviceRoute(r, deviceHandler, mqttHandler)
 	SetupUserRoutes(r, userHandler)
 	SetupMQTTRoutes(mqttClient, mqttHandler)
 	SetupAdminRoutes(r, adminHandler, userHandler, locationHandler, deviceHandler, mqttHandler, authService) // Pass the authService directly

@@ -1,8 +1,9 @@
 package handlers
 
 import (
-	"CapIot-api/internal/models"  // Import your actual module name
-	"CapIot-api/internal/service" // Import your actual module name
+	"CapIot-api/internal/models"
+	"CapIot-api/internal/service"
+	"CapIot-api/internal/utils"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -21,7 +22,7 @@ type MqttHandler struct {
 }
 
 // NewMqttHandler creates a new MqttHandler instance, now taking DeviceService and mqtt.Client
-func NewMqttHandler(deviceService service.DeviceService, mqttClient mqtt.Client) *MqttHandler { // Use the interface type here
+func NewMqttHandler(deviceService service.DeviceService, mqttClient mqtt.Client) *MqttHandler {
 	return &MqttHandler{
 		deviceService: deviceService,
 		mqttClient:    mqttClient, // Store the MQTT client
@@ -173,77 +174,6 @@ func (h *MqttHandler) HandleDeviceAvailability(client mqtt.Client, msg mqtt.Mess
 	}
 }
 
-// SetStatus is an HTTP handler that updates the status of a given device via MQTT
-func (h *MqttHandler) SetStatus(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Received request to set status for device\n")
-	vars := mux.Vars(r)
-	deviceID := vars["deviceID"]
-	if deviceID == "" {
-		http.Error(w, "Missing deviceID in URL", http.StatusBadRequest)
-		return
-	}
-
-	var req struct {
-		Status string `json:"status"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
-		return
-	}
-
-	if req.Status == "" {
-		http.Error(w, "Missing status in request body", http.StatusBadRequest)
-		return
-	}
-
-	// Look for location_id in db
-	location, err := h.deviceService.GetLocationByDeviceID(deviceID)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			log.Printf("Device '%s' not found or not linked to a location in DB.\n", deviceID)
-			http.Error(w, "Device not found or not linked to a location", http.StatusNotFound)
-			return
-		}
-		log.Printf("Error retrieving location for device '%s': %v\n", deviceID, err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	var locationID int // Default value is 0
-	if location != nil && location.ID != nil {
-		locationID = *location.ID // Correctly dereference the pointer
-	}
-
-	// Construct MQTT payload
-	payload := map[string]interface{}{
-		"device_id": deviceID,
-		"command":   req.Status,
-	}
-	if locationID != 0 {
-		payload["location_id"] = locationID
-	}
-
-	payloadBytes, err := json.Marshal(payload)
-	if err != nil {
-		log.Printf("Error marshalling MQTT payload: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	// Publish to MQTT
-	topic := "devices/commands/" + deviceID
-	token := h.mqttClient.Publish(topic, 0, false, payloadBytes) // QoS 0, not retained
-	token.Wait()
-	if token.Error() != nil {
-		log.Printf("MQTT publish error: %v", token.Error())
-		http.Error(w, "Failed to publish MQTT message", http.StatusInternalServerError)
-		return
-	}
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(fmt.Sprintf("Status '%s' set for device '%s'", req.Status, deviceID)))
-}
-
 // HandleDeviceStatus is now primarily for status updates sent by the device itself, NOT LWT.
 func (h *MqttHandler) HandleDeviceStatus(client mqtt.Client, msg mqtt.Message) {
 	log.Printf("Received status update on topic: %s, message: %s\n", msg.Topic(), string(msg.Payload()))
@@ -332,8 +262,6 @@ func (h *MqttHandler) HandleDeviceStatus(client mqtt.Client, msg mqtt.Message) {
 			// Send individual component config to the device
 			if err = h.SetDeviceConfig(deviceID, component.ComponentID, minThreshold, maxThreshold); err != nil {
 				log.Printf("Error re-sending config for component '%s' to device '%s': %v\n", component.ComponentID, deviceID, err)
-				// Do not return here, try to send other configs.
-				// The transaction for DB updates is separate from MQTT publish errors.
 			} else {
 				log.Printf("Resent config to device '%s' for component '%s' (Min: %.2f, Max: %.2f) after 'Running' status.\n",
 					deviceID, component.ComponentID, minThreshold, maxThreshold)
@@ -341,8 +269,6 @@ func (h *MqttHandler) HandleDeviceStatus(client mqtt.Client, msg mqtt.Message) {
 		}
 
 		// Optionally, send a generic "start monitoring" or acknowledgement
-		// based on the original Node.js logic that expected a response with location_id.
-		// This is a bit redundant if you're sending individual configs, but kept for compatibility.
 		payload := map[string]interface{}{
 			"device_id":   deviceID,
 			"location_id": int(statusPayload.LocationID), // Send as int
@@ -509,4 +435,188 @@ func (h *MqttHandler) HandleRunningHours(client mqtt.Client, message mqtt.Messag
 // Helper function to split the MQTT topic
 func splitTopic(topic string) []string {
 	return strings.Split(topic, "/")
+}
+
+// Reset is an HTTP handler that sends a reset command to a specific device component.
+func (h *MqttHandler) Reset(writer http.ResponseWriter, request *http.Request) {
+	// 1. Validate HTTP Method
+	if request.Method != http.MethodPost {
+		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
+		utils.RespondWithError(writer, apiErr)
+		return
+	}
+
+	// 2. Extract and validate URL variables
+	vars := mux.Vars(request)
+	componentID := vars["componentID"]
+	if componentID == "" {
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Missing componentID in URL", nil, http.StatusBadRequest)
+		utils.RespondWithError(writer, apiErr)
+		return
+	}
+
+	deviceID := vars["deviceID"]
+	if deviceID == "" {
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Missing deviceID in URL", nil, http.StatusBadRequest)
+		utils.RespondWithError(writer, apiErr)
+		return
+	}
+
+	// 3. Verify that the device and component exist in the database
+	// Use the MqttHandler's deviceService to check for existence
+	_, err := h.deviceService.GetDeviceByID(deviceID)
+	if err != nil {
+		apiErr := models.NewAPIError(models.ErrorCodeNotFound, "Device not found", nil, http.StatusNotFound)
+		utils.RespondWithError(writer, apiErr)
+		return
+	}
+
+	_, err = h.deviceService.GetComponentByID(componentID)
+	if err != nil {
+		apiErr := models.NewAPIError(models.ErrorCodeNotFound, "Component not found", nil, http.StatusNotFound)
+		utils.RespondWithError(writer, apiErr)
+		return
+	}
+
+	// 4. Construct and publish the MQTT payload
+	payload := map[string]interface{}{
+		"device_id":    deviceID,
+		"component_id": componentID,
+		"command":      "reset",
+	}
+
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		log.Printf("Error marshalling MQTT payload: %v", err)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Internal server error", nil, http.StatusInternalServerError)
+		utils.RespondWithError(writer, apiErr)
+		return
+	}
+
+	// Publish to the correct MQTT topic
+	topic := "devices/commands/" + deviceID
+	token := h.mqttClient.Publish(topic, 0, false, payloadBytes)
+	token.Wait()
+	if token.Error() != nil {
+		log.Printf("MQTT publish error: %v", token.Error())
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Failed to publish MQTT message", nil, http.StatusInternalServerError)
+		utils.RespondWithError(writer, apiErr)
+		return
+	}
+
+	// 5. Send a success response
+	utils.RespondWithJSON(writer, http.StatusOK, map[string]string{"message": fmt.Sprintf("Reset command sent for component '%s' on device '%s'", componentID, deviceID)})
+}
+
+func (d *MqttHandler) Command(w http.ResponseWriter, r *http.Request) {
+	// 1. Get deviceID from URL and validate.
+	vars := mux.Vars(r)
+	deviceID := vars["deviceID"]
+	if deviceID == "" {
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Missing deviceID in URL", nil, http.StatusBadRequest)
+		utils.RespondWithError(w, apiErr)
+		return
+	}
+
+	// 2. Decode JSON body and validate.
+	var req struct {
+		Command string `json:"command"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Invalid JSON payload", nil, http.StatusBadRequest)
+		utils.RespondWithError(w, apiErr)
+		return
+	}
+	if req.Command == "" {
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Missing 'command' in request body", nil, http.StatusBadRequest)
+		utils.RespondWithError(w, apiErr)
+		return
+	}
+
+	// 3. Validate the command.
+	validCommands := map[string]bool{
+		"Start": true,
+		"Stop":  true,
+	}
+	if !validCommands[req.Command] {
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Invalid command. Supported commands are 'Start' and 'Stop'.", nil, http.StatusBadRequest)
+		utils.RespondWithError(w, apiErr)
+		return
+	}
+
+	// 4. Construct and publish the MQTT payload.
+	payload := map[string]interface{}{
+		"device_id": deviceID,
+		"command":   req.Command,
+	}
+
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		log.Printf("Error marshalling MQTT payload: %v", err)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Internal server error", nil, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiErr)
+		return
+	}
+
+	if req.Command == "Stop" {
+		// 5. Publish the MQTT message.
+		topic := "devices/commands/" + deviceID
+		token := d.mqttClient.Publish(topic, 0, false, payloadBytes)
+		token.Wait()
+		if token.Error() != nil {
+			log.Printf("MQTT publish error: %v", token.Error())
+			apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Failed to publish MQTT message", nil, http.StatusInternalServerError)
+			utils.RespondWithError(w, apiErr)
+			return
+		}
+	} else if req.Command == "Start" {
+		// Look for location_id in db
+		location, err := d.deviceService.GetLocationByDeviceID(deviceID)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				log.Printf("Device '%s' not found or not linked to a location in DB.\n", deviceID)
+				http.Error(w, "Device not found or not linked to a location", http.StatusNotFound)
+				return
+			}
+			log.Printf("Error retrieving location for device '%s': %v\n", deviceID, err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+
+		var locationID int // Default value is 0
+		if location != nil && location.ID != nil {
+			locationID = *location.ID // Correctly dereference the pointer
+		}
+
+		// Construct MQTT payload
+		payload := map[string]interface{}{
+			"device_id": deviceID,
+			"command":   req.Command,
+		}
+		if locationID != 0 {
+			payload["location_id"] = locationID
+		}
+		payloadBytes, err := json.Marshal(payload)
+		if err != nil {
+			log.Printf("Error marshalling MQTT payload: %v", err)
+			apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Internal server error", nil, http.StatusInternalServerError)
+			utils.RespondWithError(w, apiErr)
+			return
+		}
+
+		// Publish the MQTT message.
+		topic := "devices/commands/" + deviceID
+		token := d.mqttClient.Publish(topic, 0, false, payloadBytes)
+		token.Wait()
+		if token.Error() != nil {
+			log.Printf("MQTT publish error: %v", token.Error())
+			apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Failed to publish MQTT message", nil, http.StatusInternalServerError)
+			utils.RespondWithError(w, apiErr)
+			return
+		}
+		log.Printf("MQTT command '%s' published to %s: %s", req.Command, topic, payloadBytes)
+
+	}
+	// 6. Respond with success.
+	utils.RespondWithJSON(w, http.StatusOK, map[string]string{"message": fmt.Sprintf("Command '%s' sent to device '%s'", req.Command, deviceID)})
 }

@@ -55,6 +55,7 @@ type DeviceService interface {
 	MarkcomponentLogsAsRead(tx *sql.Tx, ComponentID string, logIds []int) error                     // Updated to take tx
 	MarkAllLogsAsRead(tx *sql.Tx, userID int) error
 	UpdateComponentRunningHours(tx *sql.Tx, id string, hours int32) error
+	GetSensorsByDeviceID(id string) ([]*models.Component, error)
 }
 
 // DefaultDeviceService implements the DeviceService interface
@@ -416,4 +417,12 @@ func (s *DefaultDeviceService) UpdateComponentRunningHours(tx *sql.Tx, id string
 
 func (s *DefaultDeviceService) CheckDeviceAccess(idInt int, id string) (bool, error) {
 	return s.deviceDAO.CheckDeviceAccess(idInt, id)
+}
+
+func (s *DefaultDeviceService) GetSensorsByDeviceID(id string) ([]*models.Component, error) {
+	components, err := s.deviceDAO.GetSensorsByDeviceID(id)
+	if err != nil {
+		return nil, fmt.Errorf("error retrieving sensors for device ID '%s': %w", id, err)
+	}
+	return components, nil
 }
