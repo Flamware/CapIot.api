@@ -1,6 +1,20 @@
 -- Ce script crée un schéma de base de données complet pour un système de gestion d'appareils.
--- Il inclut des tables pour les utilisateurs, les appareils, les emplacements et les composants (capteurs, actionneurs, etc.).
--- Il intègre des fonctionnalités telles que la durée de vie des composants, les dates d'installation et la journalisation des données.
+-- Il intègre une logique de suppression en cascade pour garantir que lorsqu'un appareil
+-- est supprimé, tous les composants et les journaux de ces composants le sont aussi.
+
+-- ====================================================================================================
+-- Nettoyage du schéma (en ordre de dépendance)
+-- ====================================================================================================
+
+DROP TABLE IF EXISTS public.component_log;
+DROP TABLE IF EXISTS public.components; -- Supprimé en premier car il sera recréé avec la clé étrangère vers `devices`
+DROP TABLE IF EXISTS public.device_location;
+DROP TABLE IF EXISTS public.user_site;
+DROP TABLE IF EXISTS public.locations;
+DROP TABLE IF EXISTS public.sites;
+DROP TABLE IF EXISTS public.devices;
+DROP TABLE IF EXISTS public.users;
+
 
 -- ====================================================================================================
 -- Schéma Principal
@@ -9,8 +23,9 @@
 -- Création de la table des utilisateurs
 CREATE TABLE IF NOT EXISTS public.users (
                                             id SERIAL PRIMARY KEY,
-    name VARCHAR(255),
-    auth0_id VARCHAR(255) NOT NULL,
+                                            name VARCHAR(255),
+    email VARCHAR(255) NOT NULL UNIQUE,
+    auth0_id VARCHAR(255) NOT NULL UNIQUE,
     created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -22,9 +37,7 @@ CREATE TABLE IF NOT EXISTS public.devices (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                              );
 
--- Création de la table des sites (nouveau)
--- Un site est un emplacement physique plus large (ex: un bâtiment, une usine)
--- Chaque site est géré par un client
+-- Création de la table des sites
 CREATE TABLE IF NOT EXISTS public.sites (
                                             site_id SERIAL PRIMARY KEY,
                                             site_name TEXT NOT NULL,
@@ -33,8 +46,7 @@ CREATE TABLE IF NOT EXISTS public.sites (
     longitude DECIMAL(9, 6)
     );
 
--- Création de la table des emplacements (modifié)
--- Une localisation est une pièce ou une zone spécifique à l'intérieur d'un site
+-- Création de la table des emplacements
 CREATE TABLE IF NOT EXISTS public.locations (
                                                 location_id SERIAL PRIMARY KEY,
                                                 location_name TEXT NOT NULL,
@@ -44,24 +56,26 @@ CREATE TABLE IF NOT EXISTS public.locations (
     );
 
 -- Création de la table des composants
--- Correction : Ajout d'une virgule après la colonne max_running_hours
+-- Un composant est maintenant directement lié à un appareil.
+-- Si un appareil est supprimé, ses composants seront supprimés en cascade.
 CREATE TABLE IF NOT EXISTS public.components (
-                                                 component_id TEXT PRIMARY KEY, -- Identifiant unique pour CHAQUE composant physique
-                                                 component_name VARCHAR(255) NOT NULL, -- Nom générique du modèle de composant
+                                                 component_id TEXT PRIMARY KEY,
+                                                 device_id TEXT NOT NULL, -- Nouvelle colonne pour lier directement le composant à un appareil
+                                                 component_name VARCHAR(255) NOT NULL,
     component_type VARCHAR(255) NOT NULL,
     component_subtype VARCHAR(255),
     component_status VARCHAR(50),
     min_threshold NUMERIC(10, 2),
     max_threshold NUMERIC(10, 2),
     max_running_hours INTEGER,
-    current_running_hours INTEGER DEFAULT 0
+    current_running_hours INTEGER DEFAULT 0,
+    CONSTRAINT fk_device FOREIGN KEY (device_id) REFERENCES public.devices(device_id) ON DELETE CASCADE
     );
 
 -- ====================================================================================================
 -- Tables de Liaison
 -- ====================================================================================================
 
--- Suppression de la table user_location. Les utilisateurs sont maintenant liés aux sites.
 -- Création de la table user_site pour lier les utilisateurs à leurs sites
 CREATE TABLE IF NOT EXISTS public.user_site (
                                                 user_id INTEGER NOT NULL,
@@ -73,7 +87,6 @@ CREATE TABLE IF NOT EXISTS public.user_site (
     );
 
 -- Création de la table device_location pour suivre les emplacements actuels et historiques d'un appareil
--- Correction : Suppression d'une contrainte d'unicité redondante.
 CREATE TABLE IF NOT EXISTS public.device_location (
                                                       id SERIAL PRIMARY KEY,
                                                       device_id TEXT,
@@ -88,41 +101,22 @@ CREATE TABLE IF NOT EXISTS public.device_location (
 -- Création d'un index unique pour garantir qu'un appareil ne peut se trouver que dans un seul emplacement actuel
 CREATE UNIQUE INDEX IF NOT EXISTS unique_current_device_location ON public.device_location (device_id) WHERE is_current = true;
 
--- Création de la table device_components pour lier les appareils à leurs composants spécifiques
--- Cette table enregistre l'historique des installations de composants sur les appareils.
--- Un composant ne peut être "actuellement" installé que sur un seul appareil à la fois.
-CREATE TABLE IF NOT EXISTS public.device_components (
-                                                        id SERIAL PRIMARY KEY, -- Clé primaire auto-incrémentée pour chaque enregistrement d'installation
-                                                        device_id TEXT NOT NULL,
-                                                        component_id TEXT NOT NULL, -- Identifiant unique du composant physique
-                                                        installation_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                                                        removal_date TIMESTAMP WITH TIME ZONE, -- Date de retrait du composant
-                                                        FOREIGN KEY (device_id) REFERENCES public.devices(device_id) ON DELETE CASCADE,
-    FOREIGN KEY (component_id) REFERENCES public.components(component_id) ON DELETE CASCADE,
-    UNIQUE (device_id, component_id) -- Contrainte d'unicité pour la paire (appareil, composant)
-    );
-
--- Ajout d'un index unique partiel pour s'assurer qu'un composant n'est "actuellement" installé
--- (c'est-à-dire, removal_date IS NULL) que sur un seul appareil à la fois.
-CREATE UNIQUE INDEX IF NOT EXISTS unique_active_component_installation
-    ON public.device_components (component_id)
-    WHERE removal_date IS NULL;
-
 -- ====================================================================================================
 -- Journalisation et Privilèges
 -- ====================================================================================================
 
 -- Création de la table component_log pour stocker les données générées par les composants
+-- La suppression d'un composant entraînera la suppression de ses journaux.
 CREATE TABLE IF NOT EXISTS public.component_log (
                                                     log_id SERIAL PRIMARY KEY,
-                                                    component_id TEXT NOT NULL, -- Lien vers le composant physique spécifique
+                                                    component_id TEXT NOT NULL,
                                                     log_timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                                                     log_content TEXT,
                                                     log_read BOOLEAN DEFAULT FALSE,
                                                     CONSTRAINT fk_component
                                                     FOREIGN KEY (component_id)
     REFERENCES public.components (component_id)
-    ON DELETE SET NULL -- Si un composant est supprimé, les journaux le concernant peuvent rester, mais component_id devient NULL
+    ON DELETE CASCADE -- Changé de ON DELETE SET NULL à ON DELETE CASCADE
     );
 
 -- Octroi des privilèges au rôle 'admin' sur toutes les tables du schéma public

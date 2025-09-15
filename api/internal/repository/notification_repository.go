@@ -33,12 +33,12 @@ func (r *PostgresNotificationDAO) GetNotifications(ctx context.Context, userID, 
            c.component_type
        FROM
            public.component_log AS l
-       JOIN public.device_components AS dc ON l.component_id = dc.component_id
-       JOIN public.device_location AS dl ON dc.device_id = dl.device_id
+       JOIN public.components AS c ON l.component_id = c.component_id
+       JOIN public.devices AS d ON c.device_id = d.device_id
+       JOIN public.device_location AS dl ON d.device_id = dl.device_id
        JOIN public.locations AS loc ON dl.location_id = loc.location_id
        JOIN public.sites AS s ON loc.site_id = s.site_id
        JOIN public.user_site AS us ON s.site_id = us.site_id
-       JOIN public.components AS c ON l.component_id = c.component_id
        WHERE
            us.user_id = $1
            AND dl.is_current = true
@@ -90,12 +90,12 @@ func (r *PostgresNotificationDAO) CountNotifications(ctx context.Context, userID
 	query := `
        SELECT COUNT(*)
        FROM public.component_log AS l
-       JOIN public.device_components AS dc ON l.component_id = dc.component_id
-       JOIN public.device_location AS dl ON dc.device_id = dl.device_id
+       JOIN public.components AS c ON l.component_id = c.component_id
+       JOIN public.devices AS d ON c.device_id = d.device_id
+       JOIN public.device_location AS dl ON d.device_id = dl.device_id
        JOIN public.locations AS loc ON dl.location_id = loc.location_id
        JOIN public.sites AS s ON loc.site_id = s.site_id
        JOIN public.user_site AS us ON s.site_id = us.site_id
-       JOIN public.components AS c ON l.component_id = c.component_id
        WHERE us.user_id = $1 AND dl.is_current = true
     `
 
@@ -113,12 +113,13 @@ func (r *PostgresNotificationDAO) MarkAllAsRead(ctx context.Context, userID int)
 	query := `
        UPDATE public.component_log AS l
        SET log_read = true
-       FROM public.device_components AS dc
-       JOIN public.device_location AS dl ON dc.device_id = dl.device_id
+       FROM public.components AS c
+       JOIN public.devices AS d ON c.device_id = d.device_id
+       JOIN public.device_location AS dl ON d.device_id = dl.device_id
        JOIN public.locations AS loc ON dl.location_id = loc.location_id
        JOIN public.sites AS s ON loc.site_id = s.site_id
        JOIN public.user_site AS us ON s.site_id = us.site_id
-       WHERE l.component_id = dc.component_id
+       WHERE l.component_id = c.component_id
        AND us.user_id = $1
        AND dl.is_current = true
     `
@@ -131,12 +132,13 @@ func (r *PostgresNotificationDAO) MarkAsRead(ctx context.Context, notificationID
 	query := `
        UPDATE public.component_log AS l
        SET log_read = true
-       FROM public.device_components AS dc
-       JOIN public.device_location AS dl ON dc.device_id = dl.device_id
+       FROM public.components AS c
+       JOIN public.devices AS d ON c.device_id = d.device_id
+       JOIN public.device_location AS dl ON d.device_id = dl.device_id
        JOIN public.locations AS loc ON dl.location_id = loc.location_id
        JOIN public.sites AS s ON loc.site_id = s.site_id
        JOIN public.user_site AS us ON s.site_id = us.site_id
-       WHERE l.component_id = dc.component_id
+       WHERE l.component_id = c.component_id
        AND l.log_id = $1
        AND us.user_id = $2
        AND dl.is_current = true
@@ -149,12 +151,13 @@ func (r *PostgresNotificationDAO) MarkAsRead(ctx context.Context, notificationID
 func (r *PostgresNotificationDAO) DeleteNotification(ctx context.Context, notificationID, userID int) error {
 	query := `
        DELETE FROM public.component_log l
-       USING public.device_components AS dc
-       JOIN public.device_location AS dl ON dc.device_id = dl.device_id
+       USING public.components AS c
+       JOIN public.devices AS d ON c.device_id = d.device_id
+       JOIN public.device_location AS dl ON d.device_id = dl.device_id
        JOIN public.locations AS loc ON dl.location_id = loc.location_id
        JOIN public.sites AS s ON loc.site_id = s.site_id
        JOIN public.user_site AS us ON s.site_id = us.site_id
-       WHERE l.component_id = dc.component_id
+       WHERE l.component_id = c.component_id
        AND l.log_id = $1
        AND us.user_id = $2
        AND dl.is_current = true
@@ -186,16 +189,17 @@ func (r *PostgresNotificationDAO) CreateNotification(ctx context.Context, notifi
 // DeleteAllNotifications removes all notifications of a user
 func (r *PostgresNotificationDAO) DeleteAllNotifications(ctx context.Context, userID int) error {
 	query := `
-			   DELETE FROM public.component_log l
-	   USING public.device_components AS dc
-	   JOIN public.device_location AS dl ON dc.device_id = dl.device_id
-	   JOIN public.locations AS loc ON dl.location_id = loc.location_id
-	   JOIN public.sites AS s ON loc.site_id = s.site_id
-	   JOIN public.user_site AS us ON s.site_id = us.site_id
-	   WHERE l.component_id = dc.component_id
-	   AND us.user_id = $1
-	   AND dl.is_current = true
-	`
+       DELETE FROM public.component_log l
+       USING public.components AS c
+       JOIN public.devices AS d ON c.device_id = d.device_id
+       JOIN public.device_location AS dl ON d.device_id = dl.device_id
+       JOIN public.locations AS loc ON dl.location_id = loc.location_id
+       JOIN public.sites AS s ON loc.site_id = s.site_id
+       JOIN public.user_site AS us ON s.site_id = us.site_id
+       WHERE l.component_id = c.component_id
+       AND us.user_id = $1
+       AND dl.is_current = true
+    `
 	_, err := r.db.ExecContext(ctx, query, userID)
 	return err
 }

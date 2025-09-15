@@ -115,7 +115,7 @@ func (h *DeviceHandler) GetDeviceByID(writer http.ResponseWriter, request *http.
 	utils.RespondWithJSON(writer, http.StatusOK, device)
 }
 
-func (h *DeviceHandler) GetcomponentsByDeviceID(writer http.ResponseWriter, request *http.Request) {
+func (h *DeviceHandler) GetComponentsByDeviceID(writer http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodGet {
 		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
 		utils.RespondWithError(writer, apiErr)
@@ -128,7 +128,7 @@ func (h *DeviceHandler) GetcomponentsByDeviceID(writer http.ResponseWriter, requ
 		utils.RespondWithError(writer, apiErr)
 		return
 	}
-	components, err := h.deviceService.GetcomponentsByDeviceID(deviceID)
+	components, err := h.deviceService.GetComponentsByDeviceID(deviceID)
 	if err != nil {
 		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error getting components", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
 		utils.RespondWithError(writer, apiErr)
@@ -193,59 +193,6 @@ func (h *DeviceHandler) UnassignDeviceFromLocation(writer http.ResponseWriter, r
 	writer.WriteHeader(http.StatusOK)
 	writer.Write([]byte("Device unassigned from location successfully"))
 
-}
-
-func (h *DeviceHandler) UpdatecomponentRange(writer http.ResponseWriter, request *http.Request) {
-	if request.Method != http.MethodPatch {
-		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
-		utils.RespondWithError(writer, apiErr)
-		return
-	}
-
-	vars := mux.Vars(request)
-	DeviceID, ok := vars["deviceID"]
-	if !ok {
-		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Missing device ID in path", nil, http.StatusBadRequest)
-		utils.RespondWithError(writer, apiErr)
-		return
-	}
-
-	ComponentID, ok := vars["componentID"]
-	if !ok {
-		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Missing component ID in path", nil, http.StatusBadRequest)
-		utils.RespondWithError(writer, apiErr)
-		return
-	}
-
-	// Manually read and decode the request body
-	var componentRangeUpdate models.ComponentRangeUpdate
-	decoder := json.NewDecoder(request.Body)
-	decoder.DisallowUnknownFields() // optional but good for catching unknown fields
-	err := decoder.Decode(&componentRangeUpdate)
-	if err != nil {
-		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Invalid request body", map[string]string{"error": err.Error()}, http.StatusBadRequest)
-		utils.RespondWithError(writer, apiErr)
-		return
-	}
-
-	if componentRangeUpdate.MinThreshold == nil || componentRangeUpdate.MaxThreshold == nil {
-		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "MinThreshold and MaxThreshold cannot be null", nil, http.StatusBadRequest)
-		utils.RespondWithError(writer, apiErr)
-		return
-	}
-
-	err = h.deviceService.UpdateComponentRange(DeviceID, ComponentID, *componentRangeUpdate.MinThreshold, *componentRangeUpdate.MaxThreshold)
-	if err != nil {
-		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Failed to update component range", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
-		utils.RespondWithError(writer, apiErr)
-		return
-	}
-
-	utils.RespondWithJSON(writer, http.StatusOK, map[string]string{
-		"message":      "component range updated successfully",
-		"device_id":    DeviceID,
-		"component_id": ComponentID,
-	})
 }
 
 func (h *DeviceHandler) GetcomponentLogsByDeviceIDAndComponentID(writer http.ResponseWriter, request *http.Request) {
@@ -342,7 +289,7 @@ func (h *DeviceHandler) GetLogs(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func (h *DeviceHandler) MarkcomponentLogsAsRead(writer http.ResponseWriter, request *http.Request) {
+func (h *DeviceHandler) MarkComponentLogsAsRead(writer http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodPost {
 		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
 		utils.RespondWithError(writer, apiErr)
@@ -390,7 +337,7 @@ func (h *DeviceHandler) MarkcomponentLogsAsRead(writer http.ResponseWriter, requ
 		utils.RespondWithError(writer, apiErr)
 		return
 	}
-	_, err = h.deviceService.UserHasAccessTocomponent(userID, ComponentID)
+	_, err = h.deviceService.UserHasAccessToComponent(userID, ComponentID)
 	if err != nil {
 		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error checking user access to component", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
 		utils.RespondWithError(writer, apiErr)
@@ -407,7 +354,7 @@ func (h *DeviceHandler) MarkcomponentLogsAsRead(writer http.ResponseWriter, requ
 	defer tx.Rollback()
 
 	// Mark the logs as read
-	if err := h.deviceService.MarkcomponentLogsAsRead(tx, ComponentID, payload.LogIDs); err != nil {
+	if err := h.deviceService.MarkComponentLogsAsRead(tx, ComponentID, payload.LogIDs); err != nil {
 		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error marking component logs as read", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
 		utils.RespondWithError(writer, apiErr)
 		return

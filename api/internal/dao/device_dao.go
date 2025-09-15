@@ -30,7 +30,7 @@ type DeviceDAO interface {
 	LinkComponentToDevice(tx *sql.Tx, deviceID string, componentID string) error // Updated to take tx
 	UpdateComponentRange(tx *sql.Tx, component *models.Component) error          // Updated to take tx
 	UpdateComponentStatus(tx *sql.Tx, id string, status string) error            // Updated to take tx
-	GetcomponentsByDeviceID(id string) ([]*models.Component, error)
+	GetComponentsByDeviceID(id string) ([]*models.Component, error)
 
 	// Log Operations
 	HandleDeviceAlert(tx *sql.Tx, componentID string, message string) error // Updated to take tx
@@ -38,10 +38,12 @@ type DeviceDAO interface {
 	GetcomponentLogsByDeviceIDAndComponentID(deviceID string, ComponentID string) ([]*models.ComponentLog, error)
 	GetDeviceLogsByDeviceID(deviceID string) ([]*models.ComponentLog, error)
 	GetAllLogsByUser(userID int) ([]*models.ComponentLog, error)
-	UserHasAccessTocomponent(userID int, ComponentID string) (bool, error)
-	MarkcomponentLogsAsRead(tx *sql.Tx, ComponentID string, logIds []int) error // Updated to take tx
+	UserHasAccessToComponent(userID int, ComponentID string) (bool, error)
+	MarkComponentLogsAsRead(tx *sql.Tx, ComponentID string, logIds []int) error // Updated to take tx
 	MarkAllLogsAsRead(tx *sql.Tx, userID int) error
 	UpdateComponentRunningHours(tx *sql.Tx, id string, hours int32) error
 	CheckDeviceAccess(idInt int, id string) (bool, error)
 	GetSensorsByDeviceID(id string) ([]*models.Component, error)
+	ResetComponentRunningHours(tx *sql.Tx, id string) error
+	UpdateComponentConfig(tx *sql.Tx, config models.ComponentConfig) error
 }

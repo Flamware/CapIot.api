@@ -80,15 +80,13 @@ func SetupAdminRoutes(r *mux.Router,
 	apiRouter.Handle("/device/{deviceID}",
 		middleware.RoleCheckMiddleware(authService, []string{"admin"})(http.HandlerFunc(deviceHandler.DeleteDevice)),
 	).Methods(http.MethodDelete)
-	apiRouter.Handle("/devices/{deviceID}/components/{ComponentID}/range",
-		middleware.RoleCheckMiddleware(authService, []string{"admin", "operateur"})(http.HandlerFunc(deviceHandler.UpdatecomponentRange)),
-	).Methods(http.MethodPut)
+
 	apiRouter.Handle("/devices/{deviceID}/components",
-		middleware.RoleCheckMiddleware(authService, []string{"admin", "operateur"})(http.HandlerFunc(deviceHandler.GetcomponentsByDeviceID)),
+		middleware.RoleCheckMiddleware(authService, []string{"admin", "operateur"})(http.HandlerFunc(deviceHandler.GetComponentsByDeviceID)),
 	).Methods(http.MethodGet)
 
 	// MQTT & Device Status Routes
 	apiRouter.Handle("/devices/{deviceID}/comand",
-		middleware.RoleCheckMiddleware(authService, []string{"admin", "operateur"})(http.HandlerFunc(mqttHandler.Command)),
+		middleware.RoleCheckMiddleware(authService, []string{"admin", "operateur"})(http.HandlerFunc(mqttHandler.HandleCommandDevice)),
 	).Methods(http.MethodPatch)
 }

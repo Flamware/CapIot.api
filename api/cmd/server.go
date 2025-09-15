@@ -58,14 +58,13 @@ func main() {
 	// Initialize services in two phases to resolve circular dependency:
 	// 1. Initialize DeviceService with a nil MqttConfigPublisher initially
 	//    We'll set it later after mqttHandler is created.
-	deviceService := service.NewDeviceService(deviceRepo, nil) // Pass nil for mqttPublisher initially
+	deviceService := service.NewDeviceService(deviceRepo) // Pass nil for mqttPublisher initially
 
 	// 2. Initialize MqttHandler, passing the (partially initialized) deviceService
 	mqttHandler := handlers.NewMqttHandler(deviceService, client) // Pass deviceService here
 
 	// 3. Now, set the MqttConfigPublisher on the deviceService to the mqttHandler.
 	//    This completes the circular dependency injection.
-	deviceService.MqttConfigPublisher = mqttHandler
 
 	// Initialize other services (they don't have circular dependencies with MQTT handler)
 	authService := service.NewAuthService(authRepo, userRepo, deviceRepo)

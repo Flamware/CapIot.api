@@ -11,12 +11,6 @@ import (
 	"strings"
 )
 
-// MqttConfigPublisher defines the interface for publishing component configurations via MQTT.
-// This decouples the service from the concrete MqttHandler implementation.
-type MqttConfigPublisher interface {
-	SetDeviceConfig(deviceID string, ComponentID string, minThreshold float64, maxThreshold float64) error
-}
-
 // DeviceService interface defines the business logic for devices
 type DeviceService interface {
 	// Transaction management
@@ -38,12 +32,11 @@ type DeviceService interface {
 	CheckDeviceAccess(idInt int, id string) (bool, error)
 
 	// Component operations
-	CreateComponent(tx *sql.Tx, component *models.Component) (*models.Component, error)                         // Now takes a transaction
-	GetComponentByID(id string) (*models.Component, error)                                                      // Read-only, no tx
-	LinkcomponentToDevice(tx *sql.Tx, deviceID string, ComponentID string) error                                // Now takes a transaction
-	UpdateDeviceComponentStatus(tx *sql.Tx, id string, status string) error                                     // Now takes a transaction
-	GetcomponentsByDeviceID(id string) ([]*models.Component, error)                                             // Read-only, no tx
-	UpdateComponentRange(deviceID string, ComponentID string, minThreshold float64, maxThreshold float64) error // This method will manage its own transaction or be part of a larger one
+	CreateComponent(tx *sql.Tx, component *models.Component) (*models.Component, error) // Now takes a transaction
+	GetComponentByID(id string) (*models.Component, error)                              // Read-only, no tx
+	LinkComponentToDevice(tx *sql.Tx, deviceID string, ComponentID string) error        // Now takes a transaction
+	UpdateDeviceComponentStatus(tx *sql.Tx, id string, status string) error             // Now takes a transaction
+	GetComponentsByDeviceID(id string) ([]*models.Component, error)                     // Read-only, no tx
 
 	// Log operations
 	HandleDeviceAlert(tx *sql.Tx, componentID string, message string) error                         // Updated to take tx
@@ -51,25 +44,25 @@ type DeviceService interface {
 	GetDeviceLogsByDeviceID(id string) ([]*models.ComponentLog, error)                              // Read-only, no tx
 	GetcomponentLogsByComponentID(id string) ([]*models.ComponentLog, error)                        // Read-only, no tx
 	GetAllLogsByUser(userId int) ([]*models.ComponentLog, error)                                    // Read-only, no tx
-	UserHasAccessTocomponent(id int, id2 string) (bool, error)                                      // Read-only, no tx
-	MarkcomponentLogsAsRead(tx *sql.Tx, ComponentID string, logIds []int) error                     // Updated to take tx
+	UserHasAccessToComponent(id int, id2 string) (bool, error)                                      // Read-only, no tx
+	MarkComponentLogsAsRead(tx *sql.Tx, ComponentID string, logIds []int) error                     // Updated to take tx
 	MarkAllLogsAsRead(tx *sql.Tx, userID int) error
 	UpdateComponentRunningHours(tx *sql.Tx, id string, hours int32) error
 	GetSensorsByDeviceID(id string) ([]*models.Component, error)
+	ResetComponentRunningHours(tx *sql.Tx, id string) error
+	UpdateComponentConfig(tx *sql.Tx, config models.ComponentConfig) error
 }
 
 // DefaultDeviceService implements the DeviceService interface
 type DefaultDeviceService struct {
-	deviceDAO           dao.DeviceDAO
-	MqttConfigPublisher MqttConfigPublisher // Inject the MQTT publisher here
+	deviceDAO dao.DeviceDAO
 }
 
 // NewDeviceService creates a new DefaultDeviceService instance
 // It now accepts an MqttConfigPublisher interface
-func NewDeviceService(dao *repository.PostgresDeviceDAO, mqttPublisher MqttConfigPublisher) *DefaultDeviceService {
+func NewDeviceService(dao *repository.PostgresDeviceDAO) *DefaultDeviceService {
 	return &DefaultDeviceService{
-		deviceDAO:           dao,
-		MqttConfigPublisher: mqttPublisher,
+		deviceDAO: dao,
 	}
 }
 
@@ -173,9 +166,9 @@ func (s *DefaultDeviceService) GetDevicescomponentsLocations(ctx context.Context
 	return response, nil
 }
 
-// GetcomponentsByDeviceID
-func (s *DefaultDeviceService) GetcomponentsByDeviceID(id string) ([]*models.Component, error) {
-	components, err := s.deviceDAO.GetcomponentsByDeviceID(id)
+// GetComponentsByDeviceID
+func (s *DefaultDeviceService) GetComponentsByDeviceID(id string) ([]*models.Component, error) {
+	components, err := s.deviceDAO.GetComponentsByDeviceID(id)
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving components for device ID '%s': %w", id, err)
 	}
@@ -223,7 +216,7 @@ func (s *DefaultDeviceService) GetComponentByID(id string) (*models.Component, e
 	return s.deviceDAO.GetComponentByID(id)
 }
 
-func (s *DefaultDeviceService) LinkcomponentToDevice(tx *sql.Tx, deviceID string, ComponentID string) error {
+func (s *DefaultDeviceService) LinkComponentToDevice(tx *sql.Tx, deviceID string, ComponentID string) error {
 	// Logic to check for existence is now handled by the caller (e.g., MqttHandler)
 	// This method simply calls the DAO to link the component within the provided transaction.
 	log.Printf("Attempting to link component '%s' to device '%s' within transaction.\n", ComponentID, deviceID)
@@ -245,61 +238,6 @@ func (s *DefaultDeviceService) UpdateDeviceComponentStatus(tx *sql.Tx, id string
 	if err != nil {
 		return fmt.Errorf("error updating component status for ID '%s': %w", id, err)
 	}
-	return nil
-}
-
-func (s *DefaultDeviceService) UpdateComponentRange(deviceID string, ComponentID string, minThreshold float64, maxThreshold float64) error {
-	// This method needs to manage its own transaction if it's not part of a larger one.
-	// For simplicity, we'll create a new transaction here.
-	tx, err := s.BeginTransaction()
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction for UpdateComponentRange: %w", err)
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			tx.Rollback()
-			panic(r)
-		} else if err != nil {
-			tx.Rollback()
-		} else {
-			tx.Commit()
-		}
-	}()
-
-	// Validate device existence (read-only, can be outside transaction or use tx.QueryRow)
-	device, err := s.deviceDAO.GetDeviceByID(deviceID)
-	if err != nil {
-		return fmt.Errorf("error retrieving device with ID '%s': %w", deviceID, err)
-	}
-	if device == nil {
-		return fmt.Errorf("device with ID '%s' not found", deviceID)
-	}
-
-	// Validate component existence (read-only, can be outside transaction or use tx.QueryRow)
-	component, err := s.deviceDAO.GetComponentByID(ComponentID)
-	if err != nil {
-		return fmt.Errorf("error retrieving component with ID '%s': %w", ComponentID, err)
-	}
-	if component == nil {
-		return fmt.Errorf("component with ID '%s' not found", ComponentID)
-	}
-
-	// Update component thresholds (within the transaction)
-	component.MinThreshold = &minThreshold
-	component.MaxThreshold = &maxThreshold
-	err = s.deviceDAO.UpdateComponentRange(tx, component) // Pass the transaction
-	if err != nil {
-		return fmt.Errorf("error updating component range for ID '%s': %w", ComponentID, err)
-	}
-
-	// Publish updated configuration via MQTT (this is usually outside the DB transaction)
-	err = s.MqttConfigPublisher.SetDeviceConfig(deviceID, component.ComponentID, minThreshold, maxThreshold)
-	if err != nil {
-		log.Printf("Error publishing component config via MQTT for component ID '%s': %v", ComponentID, err)
-		return fmt.Errorf("failed to publish component configuration: %w", err)
-	}
-
-	log.Printf("Component range updated successfully for ID '%s' and config published", ComponentID)
 	return nil
 }
 
@@ -365,12 +303,12 @@ func (s *DefaultDeviceService) GetAllLogsByUser(userId int) ([]*models.Component
 	return logs, nil
 }
 
-func (s *DefaultDeviceService) UserHasAccessTocomponent(userId int, ComponentID string) (bool, error) {
+func (s *DefaultDeviceService) UserHasAccessToComponent(userId int, ComponentID string) (bool, error) {
 	log.Printf("Checking access for User ID: '%d' to component ID: '%s'", userId, ComponentID)
 	if userId <= 0 || strings.TrimSpace(ComponentID) == "" {
 		return false, fmt.Errorf("invalid user ID or component ID")
 	}
-	hasAccess, err := s.deviceDAO.UserHasAccessTocomponent(userId, ComponentID)
+	hasAccess, err := s.deviceDAO.UserHasAccessToComponent(userId, ComponentID)
 	if err != nil {
 		return false, fmt.Errorf("error checking access for User ID '%d' to component ID '%s': %w", userId, ComponentID, err)
 	}
@@ -378,12 +316,12 @@ func (s *DefaultDeviceService) UserHasAccessTocomponent(userId int, ComponentID 
 	return hasAccess, nil
 }
 
-func (s *DefaultDeviceService) MarkcomponentLogsAsRead(tx *sql.Tx, ComponentID string, logIds []int) error {
+func (s *DefaultDeviceService) MarkComponentLogsAsRead(tx *sql.Tx, ComponentID string, logIds []int) error {
 	log.Printf("Marking logs as read for component ID: '%s'", ComponentID)
 	if strings.TrimSpace(ComponentID) == "" {
 		return fmt.Errorf("component ID cannot be empty")
 	}
-	err := s.deviceDAO.MarkcomponentLogsAsRead(tx, ComponentID, logIds)
+	err := s.deviceDAO.MarkComponentLogsAsRead(tx, ComponentID, logIds)
 	if err != nil {
 		return fmt.Errorf("error marking logs as read for component ID '%s': %w", ComponentID, err)
 	}
@@ -425,4 +363,24 @@ func (s *DefaultDeviceService) GetSensorsByDeviceID(id string) ([]*models.Compon
 		return nil, fmt.Errorf("error retrieving sensors for device ID '%s': %w", id, err)
 	}
 	return components, nil
+}
+
+func (s *DefaultDeviceService) ResetComponentRunningHours(tx *sql.Tx, id string) error {
+	if strings.TrimSpace(id) == "" {
+		return fmt.Errorf("component ID cannot be empty")
+	}
+	err := s.deviceDAO.ResetComponentRunningHours(tx, id) // Pass the transaction
+	if err != nil {
+		return fmt.Errorf("error resetting running hours for component ID '%s': %w", id, err)
+	}
+	return nil
+}
+
+func (s *DefaultDeviceService) UpdateComponentConfig(tx *sql.Tx, config models.ComponentConfig) error {
+
+	err := s.deviceDAO.UpdateComponentConfig(tx, config) // Pass the transaction
+	if err != nil {
+		return fmt.Errorf("error updating config for component ID '%s': %w", config.ComponentID, err)
+	}
+	return nil
 }

@@ -33,12 +33,14 @@ type Component struct {
 	MaxThreshold        *float64 `json:"max_threshold,omitempty" db:"max_threshold"`
 	MaxRunningHours     *int32   `json:"max_running_hours,omitempty" db:"max_running_hours"`
 	CurrentRunningHours *int32   `json:"current_running_hours,omitempty" db:"current_running_hours"`
+	DeviceID            string   `json:"device_id,omitempty" db:"device_id"`
 }
 
-type ComponentRangeUpdate struct {
-	ComponentID  string   `json:"component_id" db:"component_id"`
-	MinThreshold *float64 `json:"min_threshold,omitempty" db:"min_threshold"`
-	MaxThreshold *float64 `json:"max_threshold,omitempty" db:"max_threshold"`
+type ComponentConfig struct {
+	ComponentID     string   `json:"component_id" db:"component_id"`
+	MinThreshold    *float64 `json:"min_threshold,omitempty" db:"min_threshold"`
+	MaxThreshold    *float64 `json:"max_threshold,omitempty" db:"max_threshold"`
+	MaxRunningHours *int32   `json:"max_running_hours,omitempty" db:"max_running_hours"`
 }
 
 // DeviceComponent represents the link between a device and a specific component instance.

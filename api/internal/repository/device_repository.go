@@ -40,9 +40,9 @@ func (d *PostgresDeviceDAO) BeginTransaction() (*sql.Tx, error) {
 func (d *PostgresDeviceDAO) CreateDevice(tx *sql.Tx, device *models.Device) error {
 	executor := d.getExecutor(tx)
 	query := `
-		INSERT INTO public.devices (device_id, last_seen, status, created_at)
-		VALUES ($1, $2, $3, $4)
-		ON CONFLICT (device_id) DO NOTHING` // Using DO NOTHING for idempotency
+       INSERT INTO public.devices (device_id, last_seen, status, created_at)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (device_id) DO NOTHING` // Using DO NOTHING for idempotency
 	_, err := executor.Exec(query, device.DeviceID, device.LastSeen, device.Status, device.CreatedAt)
 	if err != nil {
 		return fmt.Errorf("failed to create device: %w", err)
@@ -174,10 +174,10 @@ func (d *PostgresDeviceDAO) SetDeviceToLocation(ctx context.Context, deviceID st
 
 	// First, mark any existing assignments for this device as not current
 	updateQuery := `
-		UPDATE public.device_location
-		SET is_current = FALSE
-		WHERE device_id = $1 AND is_current = TRUE
-	`
+       UPDATE public.device_location
+       SET is_current = FALSE
+       WHERE device_id = $1 AND is_current = TRUE
+    `
 	_, err := executor.Exec(updateQuery, deviceID)
 	if err != nil {
 		return fmt.Errorf("failed to mark old device location as not current: %w", err)
@@ -185,11 +185,11 @@ func (d *PostgresDeviceDAO) SetDeviceToLocation(ctx context.Context, deviceID st
 
 	// Then, insert the new assignment or update an existing one to be current
 	insertQuery := `
-		INSERT INTO public.device_location (device_id, location_id, assigned_at, is_current)
-		VALUES ($1, $2, $3, TRUE)
-		ON CONFLICT (device_id, location_id) DO UPDATE
-		SET assigned_at = $3, is_current = TRUE
-	`
+       INSERT INTO public.device_location (device_id, location_id, assigned_at, is_current)
+       VALUES ($1, $2, $3, TRUE)
+       ON CONFLICT (device_id, location_id) DO UPDATE
+       SET assigned_at = $3, is_current = TRUE
+    `
 	_, err = executor.Exec(insertQuery, deviceID, locationID, time.Now())
 	if err != nil {
 		return fmt.Errorf("failed to set device %s to location %d: %w", deviceID, locationID, err)
@@ -225,25 +225,25 @@ func (d *PostgresDeviceDAO) FindAllWithComponentsAndLocations(
 	search string,
 ) ([]*models.DeviceWithComponentsAndLocation, error) {
 	query := `
-		SELECT
-			d.device_id, d.last_seen, d.status, d.created_at,
-			l.location_id, l.location_name, l.location_description, l.site_id,
-			s.site_name
-		FROM devices d
-		LEFT JOIN device_location dl ON d.device_id = dl.device_id AND dl.is_current = true
-		LEFT JOIN locations l ON dl.location_id = l.location_id
-		LEFT JOIN sites s ON l.site_id = s.site_id
-	`
+       SELECT
+          d.device_id, d.last_seen, d.status, d.created_at,
+          l.location_id, l.location_name, l.location_description, l.site_id,
+          s.site_name
+       FROM devices d
+       LEFT JOIN device_location dl ON d.device_id = dl.device_id AND dl.is_current = true
+       LEFT JOIN locations l ON dl.location_id = l.location_id
+       LEFT JOIN sites s ON l.site_id = s.site_id
+    `
 	args := []interface{}{}
 	argIndex := 1
 
 	// Add search filter
 	if search != "" {
 		query += fmt.Sprintf(`
-			WHERE LOWER(d.device_id) LIKE LOWER('%%' || $%d || '%%')
-			OR LOWER(l.location_name) LIKE LOWER('%%' || $%d || '%%')
-			OR LOWER(s.site_name) LIKE LOWER('%%' || $%d || '%%')
-		`, argIndex, argIndex, argIndex)
+          WHERE LOWER(d.device_id) LIKE LOWER('%%' || $%d || '%%')
+          OR LOWER(l.location_name) LIKE LOWER('%%' || $%d || '%%')
+          OR LOWER(s.site_name) LIKE LOWER('%%' || $%d || '%%')
+       `, argIndex, argIndex, argIndex)
 		args = append(args, search)
 		argIndex++
 	}
@@ -311,7 +311,7 @@ func (d *PostgresDeviceDAO) FindAllWithComponentsAndLocations(
 	// Fetch components for each device
 	for _, deviceInfo := range devices {
 		if deviceInfo.DeviceWithComponents != nil && deviceInfo.DeviceWithComponents.Device != nil {
-			components, err := d.GetcomponentsByDeviceID(deviceInfo.DeviceWithComponents.Device.DeviceID)
+			components, err := d.GetComponentsByDeviceID(deviceInfo.DeviceWithComponents.Device.DeviceID)
 			if err != nil {
 				return nil, fmt.Errorf("failed to get components for device %s: %w", deviceInfo.DeviceWithComponents.Device.DeviceID, err)
 			}
@@ -337,9 +337,8 @@ func (d *PostgresDeviceDAO) CountAll(ctx context.Context, search string) (int, e
              LOWER(d.device_id) LIKE LOWER('%' || $` + fmt.Sprintf("%d", argCount) + ` || '%') OR
              EXISTS (
                 SELECT 1
-                FROM device_components dc
-                JOIN components c ON dc.component_id = c.component_id
-                WHERE dc.device_id = d.device_id AND LOWER(c.component_type) LIKE LOWER('%' || $` + fmt.Sprintf("%d", argCount) + ` || '%')
+                FROM components c
+                WHERE c.device_id = d.device_id AND LOWER(c.component_type) LIKE LOWER('%' || $` + fmt.Sprintf("%d", argCount) + ` || '%')
              ) OR
              EXISTS (
                 SELECT 1
@@ -376,10 +375,11 @@ func (d *PostgresDeviceDAO) CreateComponent(tx *sql.Tx, component *models.Compon
 	query := `
         INSERT INTO public.components (
             component_id, component_name, component_type, component_subtype,
-            component_status, min_threshold, max_threshold, max_running_hours
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            component_status, min_threshold, max_threshold, max_running_hours,
+                                       device_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8,$9)
         RETURNING component_id, component_name, component_type, component_subtype,
-                  component_status, min_threshold, max_threshold, max_running_hours
+                  component_status, min_threshold, max_threshold, max_running_hours, device_id
     `
 	err := executor.QueryRow(
 		query,
@@ -391,6 +391,7 @@ func (d *PostgresDeviceDAO) CreateComponent(tx *sql.Tx, component *models.Compon
 		minThreshold,
 		maxThreshold,
 		maxRunningHours,
+		component.DeviceID,
 	).Scan(
 		&component.ComponentID,
 		&component.ComponentName,
@@ -400,6 +401,7 @@ func (d *PostgresDeviceDAO) CreateComponent(tx *sql.Tx, component *models.Compon
 		&minThreshold,
 		&maxThreshold,
 		&maxRunningHours,
+		&component.DeviceID,
 	)
 
 	if err != nil {
@@ -468,21 +470,6 @@ func (d *PostgresDeviceDAO) GetComponentByID(id string) (*models.Component, erro
 	return &component, nil
 }
 
-// LinkComponentToDevice links a component to a device within a transaction.
-func (d *PostgresDeviceDAO) LinkComponentToDevice(tx *sql.Tx, deviceID string, componentID string) error {
-	executor := d.getExecutor(tx)
-	query := `
-		INSERT INTO public.device_components (device_id, component_id, installation_date)
-		VALUES ($1, $2, $3)
-		ON CONFLICT (device_id, component_id) DO UPDATE SET removal_date = NULL, installation_date = $3
-	` // ON CONFLICT ensures idempotency and handles re-installation
-	_, err := executor.Exec(query, deviceID, componentID, time.Now())
-	if err != nil {
-		return fmt.Errorf("failed to link component %s to device %s: %w", componentID, deviceID, err)
-	}
-	return nil
-}
-
 // UpdateComponentStatus updates the status of a component within a transaction.
 func (d *PostgresDeviceDAO) UpdateComponentStatus(tx *sql.Tx, id string, status string) error {
 	executor := d.getExecutor(tx)
@@ -493,15 +480,14 @@ func (d *PostgresDeviceDAO) UpdateComponentStatus(tx *sql.Tx, id string, status 
 	return nil
 }
 
-// GetcomponentsByDeviceID retrieves all components linked to a specific device.
-func (d *PostgresDeviceDAO) GetcomponentsByDeviceID(id string) ([]*models.Component, error) {
+// GetComponentsByDeviceID retrieves all components linked to a specific device.
+func (d *PostgresDeviceDAO) GetComponentsByDeviceID(id string) ([]*models.Component, error) {
 	rows, err := d.db.Query(`
         SELECT c.component_id, c.component_name, c.component_type, c.component_subtype,
                c.component_status, c.min_threshold, c.max_threshold, c.max_running_hours,
                c.current_running_hours
         FROM public.components c
-        JOIN public.device_components dc ON c.component_id = dc.component_id
-        WHERE dc.device_id = $1 AND dc.removal_date IS NULL
+        WHERE c.device_id = $1
     `, id)
 	if err != nil {
 		return nil, fmt.Errorf("error querying components for device %s: %w", id, err)
@@ -607,10 +593,10 @@ func (d *PostgresDeviceDAO) GetcomponentLogsByComponentID(id string) ([]*models.
 // GetcomponentLogsByDeviceIDAndComponentID retrieves component logs for a specific device and component.
 func (d *PostgresDeviceDAO) GetcomponentLogsByDeviceIDAndComponentID(deviceID string, ComponentID string) ([]*models.ComponentLog, error) {
 	rows, err := d.db.Query(`
-       SELECT sl.log_id, sl.component_id, sl.log_timestamp, sl.log_content, sl.log_read
-       FROM component_log sl
-       JOIN device_components ds ON sl.component_id = ds.component_id
-       WHERE ds.device_id = $1 AND ds.component_id = $2
+       SELECT cl.log_id, cl.component_id, cl.log_timestamp, cl.log_content, cl.log_read
+       FROM component_log cl
+       JOIN components c ON cl.component_id = c.component_id
+       WHERE c.device_id = $1 AND cl.component_id = $2
     `, deviceID, ComponentID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query component logs by device and component ID: %w", err)
@@ -634,10 +620,10 @@ func (d *PostgresDeviceDAO) GetcomponentLogsByDeviceIDAndComponentID(deviceID st
 // GetDeviceLogsByDeviceID retrieves all logs for a specific device.
 func (d *PostgresDeviceDAO) GetDeviceLogsByDeviceID(deviceID string) ([]*models.ComponentLog, error) {
 	rows, err := d.db.Query(`
-       SELECT sl.log_id, sl.component_id, sl.log_timestamp, sl.log_content, sl.log_read
-       FROM component_log sl
-       JOIN device_components ds ON sl.component_id = ds.component_id
-       WHERE ds.device_id = $1
+       SELECT cl.log_id, cl.component_id, cl.log_timestamp, cl.log_content, cl.log_read
+       FROM component_log cl
+       JOIN components c ON cl.component_id = c.component_id
+       WHERE c.device_id = $1
     `, deviceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query device logs by device ID: %w", err)
@@ -661,10 +647,10 @@ func (d *PostgresDeviceDAO) GetDeviceLogsByDeviceID(deviceID string) ([]*models.
 // GetAllLogsByUser retrieves all logs for the user.
 func (d *PostgresDeviceDAO) GetAllLogsByUser(userID int) ([]*models.ComponentLog, error) {
 	rows, err := d.db.Query(`
-        SELECT sl.log_id, sl.component_id, sl.log_timestamp, sl.log_content, sl.log_read
-        FROM component_log sl
-        JOIN device_components ds ON sl.component_id = ds.component_id
-        JOIN device_location dl ON ds.device_id = dl.device_id AND dl.is_current = true
+        SELECT cl.log_id, cl.component_id, cl.log_timestamp, cl.log_content, cl.log_read
+        FROM component_log cl
+        JOIN components c ON cl.component_id = c.component_id
+        JOIN device_location dl ON c.device_id = dl.device_id AND dl.is_current = true
         JOIN locations l ON dl.location_id = l.location_id
         JOIN user_site us ON l.site_id = us.site_id
         WHERE us.user_id = $1
@@ -688,16 +674,16 @@ func (d *PostgresDeviceDAO) GetAllLogsByUser(userID int) ([]*models.ComponentLog
 	}
 	return logs, nil
 }
-func (d *PostgresDeviceDAO) UserHasAccessTocomponent(userID int, ComponentID string) (bool, error) {
+func (d *PostgresDeviceDAO) UserHasAccessToComponent(userID int, ComponentID string) (bool, error) {
 	query := `
        SELECT EXISTS (
           SELECT 1
-          FROM device_components AS dc
-          JOIN devices AS d ON dc.device_id = d.device_id
+          FROM components AS c
+          JOIN devices AS d ON c.device_id = d.device_id
           JOIN device_location AS dl ON d.device_id = dl.device_id AND dl.is_current = TRUE
           JOIN locations AS l ON dl.location_id = l.location_id
           JOIN user_site AS us ON l.site_id = us.site_id
-          WHERE us.user_id = $1 AND dc.component_id = $2
+          WHERE us.user_id = $1 AND c.component_id = $2
        )
     `
 	var hasAccess bool
@@ -708,8 +694,8 @@ func (d *PostgresDeviceDAO) UserHasAccessTocomponent(userID int, ComponentID str
 	return hasAccess, nil
 }
 
-// MarkcomponentLogsAsRead marks component logs as read for a specific component within a transaction.
-func (d *PostgresDeviceDAO) MarkcomponentLogsAsRead(tx *sql.Tx, ComponentID string, logIds []int) error {
+// MarkComponentLogsAsRead marks component logs as read for a specific component within a transaction.
+func (d *PostgresDeviceDAO) MarkComponentLogsAsRead(tx *sql.Tx, ComponentID string, logIds []int) error {
 	if len(logIds) == 0 {
 		return nil // No logs to mark as read
 	}
@@ -742,11 +728,11 @@ func (d *PostgresDeviceDAO) MarkAllLogsAsRead(tx *sql.Tx, userID int) error {
 	query := `
        UPDATE component_log AS cl
        SET log_read = TRUE
-       FROM device_components AS dc
-       JOIN device_location AS dl ON dc.device_id = dl.device_id AND dl.is_current = TRUE
+       FROM components AS c
+       JOIN device_location AS dl ON c.device_id = dl.device_id AND dl.is_current = TRUE
        JOIN locations AS l ON dl.location_id = l.location_id
        JOIN user_site AS us ON l.site_id = us.site_id
-       WHERE us.user_id = $1 AND cl.component_id = dc.component_id
+       WHERE us.user_id = $1 AND cl.component_id = c.component_id
     `
 	_, err := executor.Exec(query, userID)
 	if err != nil {
@@ -768,15 +754,15 @@ func (d *PostgresDeviceDAO) UpdateComponentRunningHours(tx *sql.Tx, id string, h
 // CheckDeviceAccess checks if a user has access to a specific device.
 func (d *PostgresDeviceDAO) CheckDeviceAccess(userID int, deviceID string) (bool, error) {
 	query := `
-	   SELECT EXISTS (
-		  SELECT 1
-		  FROM devices AS d
-		  JOIN device_location AS dl ON d.device_id = dl.device_id AND dl.is_current = TRUE
-		  JOIN locations AS l ON dl.location_id = l.location_id
-		  JOIN user_site AS us ON l.site_id = us.site_id
-		  WHERE us.user_id = $1 AND d.device_id = $2
-	   )
-	`
+       SELECT EXISTS (
+         SELECT 1
+         FROM devices AS d
+         JOIN device_location AS dl ON d.device_id = dl.device_id AND dl.is_current = TRUE
+         JOIN locations AS l ON dl.location_id = l.location_id
+         JOIN user_site AS us ON l.site_id = us.site_id
+         WHERE us.user_id = $1 AND d.device_id = $2
+       )
+    `
 	var hasAccess bool
 	err := d.db.QueryRow(query, userID, deviceID).Scan(&hasAccess)
 	if err != nil {
@@ -788,13 +774,12 @@ func (d *PostgresDeviceDAO) CheckDeviceAccess(userID int, deviceID string) (bool
 // GetSensorsByDeviceID retrieves all sensor components linked to a specific device.
 func (d *PostgresDeviceDAO) GetSensorsByDeviceID(id string) ([]*models.Component, error) {
 	rows, err := d.db.Query(`
-		SELECT c.component_id, c.component_name, c.component_type, c.component_subtype,
-		       			   c.component_status, c.min_threshold, c.max_threshold, c.max_running_hours,
-		       			   c.current_running_hours
-		FROM public.components c
-		JOIN public.device_components dc ON c.component_id = dc.component_id
-		WHERE dc.device_id = $1 AND dc.removal_date IS NULL AND c.component_type = 'sensor'
-	`, id)
+       SELECT c.component_id, c.component_name, c.component_type, c.component_subtype,
+                           c.component_status, c.min_threshold, c.max_threshold, c.max_running_hours,
+                           c.current_running_hours
+       FROM public.components c
+       WHERE c.device_id = $1 AND c.component_type = 'sensor'
+    `, id)
 	if err != nil {
 		return nil, fmt.Errorf("error querying sensor components for device %s: %w", id, err)
 	}
@@ -837,4 +822,50 @@ func (d *PostgresDeviceDAO) GetSensorsByDeviceID(id string) ([]*models.Component
 	}
 
 	return components, nil
+}
+
+// ResetComponentRunningHours resets the running hours of a component within a transaction.
+func (d *PostgresDeviceDAO) ResetComponentRunningHours(tx *sql.Tx, id string) error {
+	executor := d.getExecutor(tx)
+	_, err := executor.Exec("UPDATE components SET current_running_hours = 0 WHERE component_id = $1", id)
+	if err != nil {
+		return fmt.Errorf("failed to reset component running hours for %s: %w", id, err)
+	}
+	return nil
+}
+
+// UpdateComponentConfig updates the configuration of a component within a transaction.
+func (d *PostgresDeviceDAO) UpdateComponentConfig(tx *sql.Tx, component models.ComponentConfig) error {
+	executor := d.getExecutor(tx)
+	var minThreshold, maxThreshold sql.NullFloat64
+	if component.MinThreshold != nil {
+		minThreshold = sql.NullFloat64{Float64: *component.MinThreshold, Valid: true}
+	}
+	if component.MaxThreshold != nil {
+		maxThreshold = sql.NullFloat64{Float64: *component.MaxThreshold, Valid: true}
+	}
+	var maxRunningHours sql.NullInt32
+	if component.MaxRunningHours != nil {
+		maxRunningHours = sql.NullInt32{Int32: *component.MaxRunningHours, Valid: true}
+	}
+
+	_, err := executor.Exec(
+		`UPDATE components SET min_threshold = $1, max_threshold = $2, max_running_hours = $3 WHERE component_id = $4`,
+		minThreshold,
+		maxThreshold,
+		maxRunningHours,
+		component.ComponentID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update component config for %s: %w", component.ComponentID, err)
+	}
+	return nil
+}
+func (d *PostgresDeviceDAO) LinkComponentToDevice(tx *sql.Tx, componentID string, deviceID string) error {
+	executor := d.getExecutor(tx)
+	_, err := executor.Exec("UPDATE components SET device_id = $1 WHERE component_id = $2", deviceID, componentID)
+	if err != nil {
+		return fmt.Errorf("failed to link component %s to device %s: %w", componentID, deviceID, err)
+	}
+	return nil
 }
