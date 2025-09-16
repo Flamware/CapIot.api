@@ -19,17 +19,19 @@ type AuthService interface {
 
 // DefaultAuthService handles the business logic for user authentication
 type DefaultAuthService struct {
-	authRepo   *repository.AuthRepository
-	userRepo   dao.UserDAO
-	deviceRepo dao.DeviceDAO
+	authRepo      *repository.AuthRepository
+	userRepo      dao.UserDAO
+	deviceRepo    dao.DeviceDAO
+	componentRepo dao.ComponentDAO
 }
 
 // NewAuthService creates a new DefaultAuthService
-func NewAuthService(authRepo *repository.AuthRepository, userRepo dao.UserDAO, deviceRepo *repository.PostgresDeviceDAO) *DefaultAuthService {
+func NewAuthService(authRepo *repository.AuthRepository, userRepo dao.UserDAO, deviceRepo *repository.PostgresDeviceDAO, componentRepo *repository.PostgresComponentDAO) *DefaultAuthService {
 	return &DefaultAuthService{
-		authRepo:   authRepo,
-		userRepo:   userRepo,
-		deviceRepo: deviceRepo,
+		authRepo:      authRepo,
+		userRepo:      userRepo,
+		deviceRepo:    deviceRepo,
+		componentRepo: componentRepo,
 	}
 }
 

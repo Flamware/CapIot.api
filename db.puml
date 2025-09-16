@@ -1,0 +1,129 @@
+@startuml
+!theme toy
+
+' Définition des entités (tables)
+entity users {
+  *id: serial <<PK>>
+  --
+  name: varchar(255)
+  email: varchar(255) <<unique>>
+  auth0_id: varchar(255) <<unique>>
+  created_at: timestamp
+}
+
+entity devices {
+  *device_id: text <<PK>>
+  --
+  last_seen: timestamp
+  status: varchar(50)
+  created_at: timestamp
+}
+
+entity sites {
+  *site_id: serial <<PK>>
+  --
+  site_name: text
+  site_address: text
+  latitude: decimal
+  longitude: decimal
+}
+
+entity locations {
+  *location_id: serial <<PK>>
+  --
+  location_name: text
+  location_description: text
+  site_id: integer <<FK>>
+}
+
+entity components {
+  *component_id: text <<PK>>
+  --
+  device_id: text <<FK>>
+  component_name: varchar(255)
+  component_type: varchar(255)
+  component_status: varchar(50)
+  min_threshold: numeric
+  max_threshold: numeric
+  max_running_hours: integer
+  current_running_hours: integer
+}
+
+entity user_site {
+  *user_id: integer <<PK, FK>>
+  *site_id: integer <<PK, FK>>
+  --
+  assigned_at: timestamp
+}
+
+entity device_location {
+  *id: serial <<PK>>
+  --
+  device_id: text <<FK>>
+  location_id: integer <<FK>>
+  assigned_at: timestamp
+  is_current: boolean
+}
+
+entity recurring_schedules {
+  *recurring_schedule_id: serial <<PK>>
+  --
+  device_id: text <<FK>>
+  schedule_name: varchar(255)
+  start_time: time
+  end_time: time
+  start_date: date
+  end_date: date
+  recurrence_rule: text
+}
+
+entity schedule_exceptions {
+  *exception_id: serial <<PK>>
+  --
+  recurring_schedule_id: integer <<FK>>
+  exception_date: date
+  exception_action: varchar(50)
+  new_start_time: time
+  new_end_time: time
+}
+
+entity component_log {
+  *log_id: serial <<PK>>
+  --
+  component_id: text <<FK>>
+  log_timestamp: timestamp
+  log_content: text
+  log_read: boolean
+}
+
+' Définition des relations entre les entités
+' -- Relations un à plusieurs
+users "1" -- "0..*" user_site
+sites "1" -- "0..*" user_site
+sites "1" -- "0..*" locations
+devices "1" -- "0..*" components
+devices "1" -- "0..*" device_location
+devices "1" -- "0..*" recurring_schedules
+locations "1" -- "0..*" device_location
+components "1" -- "0..*" component_log
+recurring_schedules "1" -- "0..*" schedule_exceptions
+
+' -- Notations pour les suppressions en cascade
+' Les flèches de la relation vont de l'entité parent vers l'entité enfant.
+' La suppression de la table parente entraîne la suppression de l'enfant.
+' Dans PlantUML, la dépendance est implicite, mais nous pouvons l'indiquer dans les commentaires ou le texte du diagramme.
+note "ON DELETE CASCADE" as cascade_note
+(devices, components) .. cascade_note
+(devices, device_location) .. cascade_note
+(devices, recurring_schedules) .. cascade_note
+(components, component_log) .. cascade_note
+(sites, locations) .. cascade_note
+(sites, user_site) .. cascade_note
+(users, user_site) .. cascade_note
+(locations, device_location) .. cascade_note
+(recurring_schedules, schedule_exceptions) .. cascade_note
+
+' Une image pour illustrer la structure globale
+hide circle
+skinparam linetype ortho
+@enduml

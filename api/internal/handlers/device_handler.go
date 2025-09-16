@@ -8,6 +8,7 @@ import (
 	"github.com/gorilla/mux"
 	"log"
 	"net/http"
+	"strconv"
 )
 
 type DeviceHandler struct {
@@ -438,4 +439,132 @@ func (h *DeviceHandler) GetSensorsByDeviceID(writer http.ResponseWriter, request
 		return
 	}
 	utils.RespondWithJSON(writer, http.StatusOK, sensors)
+}
+
+// CreateRecurringSchedule handles the creation of a new recurring schedule.
+func (h *DeviceHandler) CreateRecurringSchedule(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
+		utils.RespondWithError(w, apiErr)
+		return
+	}
+
+	var schedule models.RecurringSchedule
+	if err := json.NewDecoder(r.Body).Decode(&schedule); err != nil {
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Invalid request body", map[string]string{"error": err.Error()}, http.StatusBadRequest)
+		utils.RespondWithError(w, apiErr)
+		return
+	}
+
+	// You might want to get the deviceID from the URL vars instead of the body
+	vars := mux.Vars(r)
+	deviceID, ok := vars["deviceID"]
+	if !ok {
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Missing device ID in path", nil, http.StatusBadRequest)
+		utils.RespondWithError(w, apiErr)
+		return
+	}
+	schedule.DeviceID = deviceID
+
+	createdSchedule, err := h.deviceService.CreateRecurringSchedule(r.Context(), &schedule)
+	if err != nil {
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Failed to create recurring schedule", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiErr)
+		return
+	}
+	utils.RespondWithJSON(w, http.StatusCreated, createdSchedule)
+}
+
+// GetRecurringSchedulesByDevice handles retrieving all recurring schedules for a device.
+func (h *DeviceHandler) GetRecurringSchedulesByDevice(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
+		utils.RespondWithError(w, apiErr)
+		return
+	}
+
+	vars := mux.Vars(r)
+	deviceID, ok := vars["deviceID"]
+	if !ok {
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Missing device ID in path", nil, http.StatusBadRequest)
+		utils.RespondWithError(w, apiErr)
+		return
+	}
+
+	schedules, err := h.deviceService.GetRecurringSchedulesByDevice(r.Context(), deviceID)
+	if err != nil {
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Failed to get recurring schedules", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiErr)
+		return
+	}
+	utils.RespondWithJSON(w, http.StatusOK, schedules)
+}
+
+// UpdateRecurringSchedule handles updating an existing recurring schedule.
+func (h *DeviceHandler) UpdateRecurringSchedule(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
+		utils.RespondWithError(w, apiErr)
+		return
+	}
+	vars := mux.Vars(r)
+	scheduleIDStr, ok := vars["scheduleID"]
+	if !ok {
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Missing schedule ID in path", nil, http.StatusBadRequest)
+		utils.RespondWithError(w, apiErr)
+		return
+	}
+
+	scheduleID, err := strconv.Atoi(scheduleIDStr)
+	if err != nil {
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Invalid schedule ID", nil, http.StatusBadRequest)
+		utils.RespondWithError(w, apiErr)
+		return
+	}
+
+	var schedule models.RecurringSchedule
+	if err := json.NewDecoder(r.Body).Decode(&schedule); err != nil {
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Invalid request body", nil, http.StatusBadRequest)
+		utils.RespondWithError(w, apiErr)
+		return
+	}
+
+	// Call the service to update the schedule
+	if err := h.deviceService.UpdateRecurringSchedule(r.Context(), scheduleID, &schedule); err != nil {
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Failed to update recurring schedule", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiErr)
+		return
+	}
+	utils.RespondWithJSON(w, http.StatusOK, map[string]string{"message": "Schedule updated successfully"})
+}
+
+// DeleteRecurringSchedule handles deleting a recurring schedule.
+func (h *DeviceHandler) DeleteRecurringSchedule(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
+		utils.RespondWithError(w, apiErr)
+		return
+	}
+
+	vars := mux.Vars(r)
+	scheduleIDStr, ok := vars["scheduleID"]
+	if !ok {
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Missing schedule ID in path", nil, http.StatusBadRequest)
+		utils.RespondWithError(w, apiErr)
+		return
+	}
+
+	scheduleID, err := strconv.Atoi(scheduleIDStr)
+	if err != nil {
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Invalid schedule ID", nil, http.StatusBadRequest)
+		utils.RespondWithError(w, apiErr)
+		return
+	}
+
+	if err := h.deviceService.DeleteRecurringSchedule(r.Context(), scheduleID); err != nil {
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Failed to delete recurring schedule", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiErr)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

@@ -3,7 +3,6 @@ package service
 import (
 	"CapIot-api/internal/dao"
 	"CapIot-api/internal/models"
-	"CapIot-api/internal/repository"
 	"context"
 	"database/sql"
 	"fmt"
@@ -11,70 +10,80 @@ import (
 	"strings"
 )
 
-// DeviceService interface defines the business logic for devices
+// DeviceService interface defines the business logic for devices.
+// It combines operations from both DAOs at the service level.
 type DeviceService interface {
 	// Transaction management
-	BeginTransaction() (*sql.Tx, error) // Method to start a transaction
+	BeginTransaction() (*sql.Tx, error)
 
 	// Device operations
-	CreateDevice(tx *sql.Tx, device *models.Device) error                                                                // Now takes a transaction
-	GetDeviceByDeviceID(deviceID string) (*models.Device, error)                                                         // Read-only, no tx
-	UpdateDeviceLastSeenAndStatus(tx *sql.Tx, deviceID string, status models.OperationalStatus) error                    // Now takes a transaction
-	UpdateDeviceOperationalStatus(tx *sql.Tx, deviceID string, operationalStatus models.OperationalStatus) error         // Now takes a transaction
-	GetDeviceByID(id string) (*models.Device, error)                                                                     // Read-only, no tx
-	GetAllDevices() ([]*models.Device, error)                                                                            // Read-only, no tx
-	GetUnassignedDevices() ([]*models.Device, error)                                                                     // Read-only, no tx
-	DeleteDevice(tx *sql.Tx, id string) error                                                                            // No tx here, but DAO method might take it
-	UnassignDeviceFromLocation(tx *sql.Tx, id string) error                                                              // Updated to take tx
-	GetLocationByDeviceID(id string) (*models.Location, error)                                                           // Read-only, no tx
-	GetDevicescomponentsLocations(ctx context.Context, page int, limit int, term string) (map[string]interface{}, error) // Read-only, no tx
+	CreateDevice(tx *sql.Tx, device *models.Device) error
+	GetDeviceByDeviceID(deviceID string) (*models.Device, error)
+	UpdateDeviceLastSeenAndStatus(tx *sql.Tx, deviceID string, status models.OperationalStatus) error
+	UpdateDeviceOperationalStatus(tx *sql.Tx, deviceID string, operationalStatus models.OperationalStatus) error
+	GetDeviceByID(id string) (*models.Device, error)
+	GetAllDevices() ([]*models.Device, error)
+	GetUnassignedDevices() ([]*models.Device, error)
+	DeleteDevice(tx *sql.Tx, id string) error
+	UnassignDeviceFromLocation(tx *sql.Tx, id string) error
+	GetLocationByDeviceID(id string) (*models.Location, error)
+	GetDevicescomponentsLocations(ctx context.Context, page int, limit int, term string) (map[string]interface{}, error)
 	SetDeviceToLocation(ctx context.Context, deviceID string, locationID int) error
 	CheckDeviceAccess(idInt int, id string) (bool, error)
 
 	// Component operations
-	CreateComponent(tx *sql.Tx, component *models.Component) (*models.Component, error) // Now takes a transaction
-	GetComponentByID(id string) (*models.Component, error)                              // Read-only, no tx
-	LinkComponentToDevice(tx *sql.Tx, deviceID string, ComponentID string) error        // Now takes a transaction
-	UpdateDeviceComponentStatus(tx *sql.Tx, id string, status string) error             // Now takes a transaction
-	GetComponentsByDeviceID(id string) ([]*models.Component, error)                     // Read-only, no tx
-
-	// Log operations
-	HandleDeviceAlert(tx *sql.Tx, componentID string, message string) error                         // Updated to take tx
-	GetcomponentLogsByDeviceIDAndComponentID(id string, id2 string) ([]*models.ComponentLog, error) // Read-only, no tx
-	GetDeviceLogsByDeviceID(id string) ([]*models.ComponentLog, error)                              // Read-only, no tx
-	GetcomponentLogsByComponentID(id string) ([]*models.ComponentLog, error)                        // Read-only, no tx
-	GetAllLogsByUser(userId int) ([]*models.ComponentLog, error)                                    // Read-only, no tx
-	UserHasAccessToComponent(id int, id2 string) (bool, error)                                      // Read-only, no tx
-	MarkComponentLogsAsRead(tx *sql.Tx, ComponentID string, logIds []int) error                     // Updated to take tx
-	MarkAllLogsAsRead(tx *sql.Tx, userID int) error
+	CreateComponent(tx *sql.Tx, component *models.Component) (*models.Component, error)
+	GetComponentByID(id string) (*models.Component, error)
+	LinkComponentToDevice(tx *sql.Tx, deviceID string, ComponentID string) error
+	UpdateDeviceComponentStatus(tx *sql.Tx, id string, status string) error
+	GetComponentsByDeviceID(id string) ([]*models.Component, error)
 	UpdateComponentRunningHours(tx *sql.Tx, id string, hours int32) error
 	GetSensorsByDeviceID(id string) ([]*models.Component, error)
 	ResetComponentRunningHours(tx *sql.Tx, id string) error
 	UpdateComponentConfig(tx *sql.Tx, config models.ComponentConfig) error
+
+	// Log operations
+	HandleDeviceAlert(tx *sql.Tx, componentID string, message string) error
+	GetcomponentLogsByDeviceIDAndComponentID(id string, id2 string) ([]*models.ComponentLog, error)
+	GetDeviceLogsByDeviceID(id string) ([]*models.ComponentLog, error)
+	GetcomponentLogsByComponentID(id string) ([]*models.ComponentLog, error)
+	GetAllLogsByUser(userId int) ([]*models.ComponentLog, error)
+	UserHasAccessToComponent(id int, id2 string) (bool, error)
+	MarkComponentLogsAsRead(tx *sql.Tx, ComponentID string, logIds []int) error
+	MarkAllLogsAsRead(tx *sql.Tx, userID int) error
+
+	// Schedule operations
+	CreateRecurringSchedule(ctx context.Context, schedule *models.RecurringSchedule) (*models.RecurringSchedule, error)
+	GetRecurringScheduleByID(ctx context.Context, scheduleID int) (*models.RecurringSchedule, error)
+	GetRecurringSchedulesByDevice(ctx context.Context, deviceID string) ([]*models.RecurringSchedule, error)
+	UpdateRecurringSchedule(ctx context.Context, scheduleID int, schedule *models.RecurringSchedule) error
+	DeleteRecurringSchedule(ctx context.Context, scheduleID int) error
 }
 
 // DefaultDeviceService implements the DeviceService interface
 type DefaultDeviceService struct {
-	deviceDAO dao.DeviceDAO
+	deviceDAO    dao.DeviceDAO
+	componentDAO dao.ComponentDAO
+	scheduleDAO  dao.ScheduleDAO // <-- Add the new dependency
 }
 
 // NewDeviceService creates a new DefaultDeviceService instance
-// It now accepts an MqttConfigPublisher interface
-func NewDeviceService(dao *repository.PostgresDeviceDAO) *DefaultDeviceService {
+func NewDeviceService(deviceDAO dao.DeviceDAO, componentDAO dao.ComponentDAO, scheduleDAO dao.ScheduleDAO) *DefaultDeviceService {
 	return &DefaultDeviceService{
-		deviceDAO: dao,
+		deviceDAO:    deviceDAO,
+		componentDAO: componentDAO,
+		scheduleDAO:  scheduleDAO,
 	}
 }
 
 // --- Transaction Management ---
 func (s *DefaultDeviceService) BeginTransaction() (*sql.Tx, error) {
-	return s.deviceDAO.BeginTransaction() // Call the DAO's BeginTransaction
+	// We only need one transaction, so we'll use the deviceDAO to start it.
+	return s.deviceDAO.BeginTransaction()
 }
 
 // --- Device Operations ---
 func (s *DefaultDeviceService) CreateDevice(tx *sql.Tx, device *models.Device) error {
-	// The business logic of checking for existence is now handled by the caller (e.g., MqttHandler)
-	// This method simply calls the DAO to create the device within the provided transaction.
 	return s.deviceDAO.CreateDevice(tx, device)
 }
 
@@ -87,7 +96,6 @@ func (s *DefaultDeviceService) UpdateDeviceLastSeenAndStatus(tx *sql.Tx, deviceI
 }
 
 func (s *DefaultDeviceService) UpdateDeviceOperationalStatus(tx *sql.Tx, deviceID string, operationalStatus models.OperationalStatus) error {
-	// Business logic can go here, but the actual update happens in DAO with transaction
 	return s.deviceDAO.UpdateDeviceOperationalStatus(tx, deviceID, operationalStatus)
 }
 
@@ -123,7 +131,6 @@ func (s *DefaultDeviceService) DeleteDevice(ctx *sql.Tx, id string) error {
 }
 
 func (s *DefaultDeviceService) UnassignDeviceFromLocation(tx *sql.Tx, id string) error {
-	// Similar to DeleteDevice, might need its own transaction logic
 	existingDevice, err := s.deviceDAO.GetDeviceByID(id)
 	if err != nil {
 		return fmt.Errorf("error retrieving device '%s': %w", id, err)
@@ -145,10 +152,19 @@ func (s *DefaultDeviceService) GetLocationByDeviceID(id string) (*models.Locatio
 func (s *DefaultDeviceService) GetDevicescomponentsLocations(ctx context.Context, page int, limit int, search string) (map[string]interface{}, error) {
 	log.Printf("GetDevicescomponentsLocations called with page: %d, limit: %d, search: '%s'", page, limit, search)
 	offset := (page - 1) * limit
-	devices, err := s.deviceDAO.FindAllWithComponentsAndLocations(ctx, limit, offset, search)
+	// Get device and location info from deviceDAO
+	devicesWithLocation, err := s.deviceDAO.FindAllWithComponentsAndLocations(ctx, limit, offset, search)
 	if err != nil {
-		log.Printf("Error fetching paginated and filtered data: %v", err)
+		log.Printf("Error fetching paginated and filtered data from deviceDAO: %v", err)
 		return nil, err
+	}
+	// Now, get the components for each device using the componentDAO
+	for _, deviceInfo := range devicesWithLocation {
+		components, err := s.componentDAO.GetComponentsByDeviceID(deviceInfo.DeviceWithComponents.Device.DeviceID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get components for device %s: %w", deviceInfo.DeviceWithComponents.Device.DeviceID, err)
+		}
+		deviceInfo.DeviceWithComponents.Components = components
 	}
 	totalDevices, err := s.deviceDAO.CountAll(ctx, search)
 	if err != nil {
@@ -157,7 +173,7 @@ func (s *DefaultDeviceService) GetDevicescomponentsLocations(ctx context.Context
 	}
 	totalPages := (totalDevices + limit - 1) / limit
 	response := map[string]interface{}{
-		"data":        devices,
+		"data":        devicesWithLocation,
 		"currentPage": page,
 		"pageSize":    limit,
 		"totalItems":  totalDevices,
@@ -166,44 +182,43 @@ func (s *DefaultDeviceService) GetDevicescomponentsLocations(ctx context.Context
 	return response, nil
 }
 
-// GetComponentsByDeviceID
-func (s *DefaultDeviceService) GetComponentsByDeviceID(id string) ([]*models.Component, error) {
-	components, err := s.deviceDAO.GetComponentsByDeviceID(id)
+func (s *DefaultDeviceService) SetDeviceToLocation(ctx context.Context, deviceID string, locationID int) error {
+
+	// Check if device exists
+	existingDevice, err := s.deviceDAO.GetDeviceByID(deviceID)
 	if err != nil {
-		return nil, fmt.Errorf("error retrieving components for device ID '%s': %w", id, err)
+		return fmt.Errorf("error retrieving device '%s': %w", deviceID, err)
 	}
-	return components, nil
+	if existingDevice == nil {
+		return fmt.Errorf("device '%s' not found", deviceID)
+	}
+
+	// Check if location exists
+	location, err := s.deviceDAO.GetLocationByDeviceID(deviceID)
+	if err != nil && err != sql.ErrNoRows {
+		return fmt.Errorf("error checking location for device '%s': %w", deviceID, err)
+	}
+	if location != nil && location.ID == &locationID {
+		return fmt.Errorf("device '%s' is already assigned to location '%d'", deviceID, locationID)
+	}
+
+	// Set device to location
+	err = s.deviceDAO.SetDeviceToLocation(ctx, deviceID, locationID)
+	if err != nil {
+		return fmt.Errorf("failed to set device '%s' to location '%d': %w", deviceID, locationID, err)
+	}
+
+	return nil
 }
 
-func (s *DefaultDeviceService) SetDeviceToLocation(ctx context.Context, deviceID string, locationID int) error {
-	tx, err := s.BeginTransaction()
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			tx.Rollback()
-			panic(r)
-		} else if err != nil {
-			tx.Rollback()
-		} else {
-			tx.Commit()
-		}
-	}()
-
-	// Pass the transaction context to the DAO layer
-	ctxWithTx := context.WithValue(ctx, "tx", tx)
-	err = s.deviceDAO.SetDeviceToLocation(ctxWithTx, deviceID, locationID)
-	if err != nil {
-		return fmt.Errorf("failed to set device to location: %w", err)
-	}
-	return nil
+func (s *DefaultDeviceService) CheckDeviceAccess(idInt int, id string) (bool, error) {
+	return s.deviceDAO.CheckDeviceAccess(idInt, id)
 }
 
 // --- Component Operations ---
 func (s *DefaultDeviceService) CreateComponent(tx *sql.Tx, component *models.Component) (*models.Component, error) {
 	log.Printf("Attempting to create component with ID: '%s', Name: '%s' within transaction.\n", component.ComponentID, component.ComponentName)
-	createdComponent, err := s.deviceDAO.CreateComponent(tx, component) // Pass the transaction
+	createdComponent, err := s.componentDAO.CreateComponent(tx, component)
 	if err != nil {
 		log.Printf("Error creating component in DAO for ID '%s': %v\n", component.ComponentID, err)
 		return nil, fmt.Errorf("error creating component in DAO: %w", err)
@@ -213,152 +228,52 @@ func (s *DefaultDeviceService) CreateComponent(tx *sql.Tx, component *models.Com
 }
 
 func (s *DefaultDeviceService) GetComponentByID(id string) (*models.Component, error) {
-	return s.deviceDAO.GetComponentByID(id)
+	return s.componentDAO.GetComponentByID(id)
 }
 
-func (s *DefaultDeviceService) LinkComponentToDevice(tx *sql.Tx, deviceID string, ComponentID string) error {
-	// Logic to check for existence is now handled by the caller (e.g., MqttHandler)
-	// This method simply calls the DAO to link the component within the provided transaction.
-	log.Printf("Attempting to link component '%s' to device '%s' within transaction.\n", ComponentID, deviceID)
-	err := s.deviceDAO.LinkComponentToDevice(tx, deviceID, ComponentID) // Pass the transaction
+func (s *DefaultDeviceService) LinkComponentToDevice(tx *sql.Tx, deviceID string, componentID string) error {
+	log.Printf("Attempting to link component '%s' to device '%s' within transaction.\n", componentID, deviceID)
+	err := s.componentDAO.LinkComponentToDevice(tx, deviceID, componentID)
 	if err != nil {
-		return fmt.Errorf("failed to link component '%s' to device '%s': %w", ComponentID, deviceID, err)
+		return fmt.Errorf("failed to link component '%s' to device '%s': %w", componentID, deviceID, err)
 	}
-	log.Printf("Linked component '%s' to device '%s' successfully within transaction.\n", ComponentID, deviceID)
+	log.Printf("Linked component '%s' to device '%s' successfully within transaction.\n", componentID, deviceID)
 	return nil
 }
 
 func (s *DefaultDeviceService) UpdateDeviceComponentStatus(tx *sql.Tx, id string, status string) error {
-	// This method now updates the component's status within the provided transaction.
 	log.Printf("Updating component status for component ID: '%s' to status: '%s' within transaction.", id, status)
 	if strings.TrimSpace(id) == "" || strings.TrimSpace(status) == "" {
 		return fmt.Errorf("component ID and status cannot be empty")
 	}
-	err := s.deviceDAO.UpdateComponentStatus(tx, id, status) // Pass the transaction
+	err := s.componentDAO.UpdateComponentStatus(tx, id, status)
 	if err != nil {
 		return fmt.Errorf("error updating component status for ID '%s': %w", id, err)
 	}
 	return nil
 }
 
-// --- Log Operations ---
-func (s *DefaultDeviceService) HandleDeviceAlert(tx *sql.Tx, ComponentID string, message string) error {
-	// This method might need to manage its own transaction.
-	// For simplicity, assuming DAO handles its own transaction or is part of a larger one.
-	log.Printf("Handling alert for component '%s': '%s' ", ComponentID, message)
-	err := s.deviceDAO.HandleDeviceAlert(tx, ComponentID, message)
+func (s *DefaultDeviceService) GetComponentsByDeviceID(id string) ([]*models.Component, error) {
+	components, err := s.componentDAO.GetComponentsByDeviceID(id)
 	if err != nil {
-		return fmt.Errorf("error handling alert for component '%s': %w", ComponentID, err)
+		return nil, fmt.Errorf("error retrieving components for device ID '%s': %w", id, err)
 	}
-	log.Printf("Alert handled successfully for component '%s'", ComponentID)
-	return nil
-}
-
-func (s *DefaultDeviceService) GetcomponentLogsByDeviceIDAndComponentID(deviceID string, ComponentID string) ([]*models.ComponentLog, error) {
-	log.Printf("Fetching logs for Device ID: '%s', component ID: '%s'", deviceID, ComponentID)
-	if strings.TrimSpace(deviceID) == "" || strings.TrimSpace(ComponentID) == "" {
-		return nil, fmt.Errorf("device ID and component ID cannot be empty")
-	}
-	logs, err := s.deviceDAO.GetcomponentLogsByDeviceIDAndComponentID(deviceID, ComponentID)
-	if err != nil {
-		return nil, fmt.Errorf("error retrieving logs for Device ID '%s' and component ID '%s': %w", deviceID, ComponentID, err)
-	}
-	log.Printf("Retrieved %d logs for Device ID: '%s', component ID: '%s'", len(logs), deviceID, ComponentID)
-	return logs, nil
-}
-
-func (s *DefaultDeviceService) GetDeviceLogsByDeviceID(deviceID string) ([]*models.ComponentLog, error) {
-	log.Printf("Fetching logs for Device ID: '%s'", deviceID)
-	if strings.TrimSpace(deviceID) == "" {
-		return nil, fmt.Errorf("device ID cannot be empty")
-	}
-	logs, err := s.deviceDAO.GetDeviceLogsByDeviceID(deviceID)
-	if err != nil {
-		return nil, fmt.Errorf("error retrieving logs for Device ID '%s': %w", deviceID, err)
-	}
-	log.Printf("Retrieved %d logs for Device ID: '%s'", len(logs), deviceID)
-	return logs, nil
-}
-
-func (s *DefaultDeviceService) GetcomponentLogsByComponentID(ComponentID string) ([]*models.ComponentLog, error) {
-	log.Printf("Fetching logs for component ID: '%s'", ComponentID)
-	if strings.TrimSpace(ComponentID) == "" {
-		return nil, fmt.Errorf("component ID cannot be empty")
-	}
-	logs, err := s.deviceDAO.GetcomponentLogsByComponentID(ComponentID)
-	if err != nil {
-		return nil, fmt.Errorf("error retrieving logs for component ID '%s': %w", ComponentID, err)
-	}
-	log.Printf("Retrieved %d logs for component ID: '%s'", len(logs), ComponentID)
-	return logs, nil
-}
-
-func (s *DefaultDeviceService) GetAllLogsByUser(userId int) ([]*models.ComponentLog, error) {
-	log.Println("Fetching all logs for the user")
-	logs, err := s.deviceDAO.GetAllLogsByUser(userId)
-	if err != nil {
-		return nil, fmt.Errorf("error retrieving all logs: %w", err)
-	}
-	log.Printf("Retrieved %d logs for the user", len(logs))
-	return logs, nil
-}
-
-func (s *DefaultDeviceService) UserHasAccessToComponent(userId int, ComponentID string) (bool, error) {
-	log.Printf("Checking access for User ID: '%d' to component ID: '%s'", userId, ComponentID)
-	if userId <= 0 || strings.TrimSpace(ComponentID) == "" {
-		return false, fmt.Errorf("invalid user ID or component ID")
-	}
-	hasAccess, err := s.deviceDAO.UserHasAccessToComponent(userId, ComponentID)
-	if err != nil {
-		return false, fmt.Errorf("error checking access for User ID '%d' to component ID '%s': %w", userId, ComponentID, err)
-	}
-	log.Printf("User ID: '%d' has access to component ID: '%s': %v", userId, ComponentID, hasAccess)
-	return hasAccess, nil
-}
-
-func (s *DefaultDeviceService) MarkComponentLogsAsRead(tx *sql.Tx, ComponentID string, logIds []int) error {
-	log.Printf("Marking logs as read for component ID: '%s'", ComponentID)
-	if strings.TrimSpace(ComponentID) == "" {
-		return fmt.Errorf("component ID cannot be empty")
-	}
-	err := s.deviceDAO.MarkComponentLogsAsRead(tx, ComponentID, logIds)
-	if err != nil {
-		return fmt.Errorf("error marking logs as read for component ID '%s': %w", ComponentID, err)
-	}
-	log.Printf("Successfully marked logs as read for component ID: '%s'", ComponentID)
-	return nil
-}
-
-func (s *DefaultDeviceService) MarkAllLogsAsRead(tx *sql.Tx, userId int) error {
-	log.Printf("Marking all logs as read for User ID: '%d'", userId)
-	if userId <= 0 {
-		return fmt.Errorf("invalid user ID")
-	}
-	err := s.deviceDAO.MarkAllLogsAsRead(tx, userId)
-	if err != nil {
-		return fmt.Errorf("error marking all logs as read for User ID '%d': %w", userId, err)
-	}
-	log.Printf("Successfully marked all logs as read for User ID: '%d'", userId)
-	return nil
+	return components, nil
 }
 
 func (s *DefaultDeviceService) UpdateComponentRunningHours(tx *sql.Tx, id string, hours int32) error {
 	if strings.TrimSpace(id) == "" || hours < 0 {
 		return fmt.Errorf("component ID cannot be empty and hours must be non-negative")
 	}
-	err := s.deviceDAO.UpdateComponentRunningHours(tx, id, hours) // Pass the transaction
+	err := s.componentDAO.UpdateComponentRunningHours(tx, id, hours)
 	if err != nil {
 		return fmt.Errorf("error updating running hours for component ID '%s': %w", id, err)
 	}
 	return nil
 }
 
-func (s *DefaultDeviceService) CheckDeviceAccess(idInt int, id string) (bool, error) {
-	return s.deviceDAO.CheckDeviceAccess(idInt, id)
-}
-
 func (s *DefaultDeviceService) GetSensorsByDeviceID(id string) ([]*models.Component, error) {
-	components, err := s.deviceDAO.GetSensorsByDeviceID(id)
+	components, err := s.componentDAO.GetSensorsByDeviceID(id)
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving sensors for device ID '%s': %w", id, err)
 	}
@@ -369,7 +284,7 @@ func (s *DefaultDeviceService) ResetComponentRunningHours(tx *sql.Tx, id string)
 	if strings.TrimSpace(id) == "" {
 		return fmt.Errorf("component ID cannot be empty")
 	}
-	err := s.deviceDAO.ResetComponentRunningHours(tx, id) // Pass the transaction
+	err := s.componentDAO.ResetComponentRunningHours(tx, id)
 	if err != nil {
 		return fmt.Errorf("error resetting running hours for component ID '%s': %w", id, err)
 	}
@@ -377,10 +292,150 @@ func (s *DefaultDeviceService) ResetComponentRunningHours(tx *sql.Tx, id string)
 }
 
 func (s *DefaultDeviceService) UpdateComponentConfig(tx *sql.Tx, config models.ComponentConfig) error {
-
-	err := s.deviceDAO.UpdateComponentConfig(tx, config) // Pass the transaction
+	err := s.componentDAO.UpdateComponentConfig(tx, config)
 	if err != nil {
 		return fmt.Errorf("error updating config for component ID '%s': %w", config.ComponentID, err)
 	}
 	return nil
+}
+
+// --- Log Operations ---
+func (s *DefaultDeviceService) HandleDeviceAlert(tx *sql.Tx, componentID string, message string) error {
+	log.Printf("Handling alert for component '%s': '%s'", componentID, message)
+	err := s.componentDAO.HandleDeviceAlert(tx, componentID, message)
+	if err != nil {
+		return fmt.Errorf("error handling alert for component '%s': %w", componentID, err)
+	}
+	log.Printf("Alert handled successfully for component '%s'", componentID)
+	return nil
+}
+
+func (s *DefaultDeviceService) GetcomponentLogsByDeviceIDAndComponentID(deviceID string, componentID string) ([]*models.ComponentLog, error) {
+	log.Printf("Fetching logs for Device ID: '%s', component ID: '%s'", deviceID, componentID)
+	if strings.TrimSpace(deviceID) == "" || strings.TrimSpace(componentID) == "" {
+		return nil, fmt.Errorf("device ID and component ID cannot be empty")
+	}
+	logs, err := s.componentDAO.GetcomponentLogsByDeviceIDAndComponentID(deviceID, componentID)
+	if err != nil {
+		return nil, fmt.Errorf("error retrieving logs for Device ID '%s' and component ID '%s': %w", deviceID, componentID, err)
+	}
+	log.Printf("Retrieved %d logs for Device ID: '%s', component ID: '%s'", len(logs), deviceID, componentID)
+	return logs, nil
+}
+
+func (s *DefaultDeviceService) GetDeviceLogsByDeviceID(deviceID string) ([]*models.ComponentLog, error) {
+	log.Printf("Fetching logs for Device ID: '%s'", deviceID)
+	if strings.TrimSpace(deviceID) == "" {
+		return nil, fmt.Errorf("device ID cannot be empty")
+	}
+	logs, err := s.componentDAO.GetDeviceLogsByDeviceID(deviceID)
+	if err != nil {
+		return nil, fmt.Errorf("error retrieving logs for Device ID '%s': %w", deviceID, err)
+	}
+	log.Printf("Retrieved %d logs for Device ID: '%s'", len(logs), deviceID)
+	return logs, nil
+}
+
+func (s *DefaultDeviceService) GetcomponentLogsByComponentID(componentID string) ([]*models.ComponentLog, error) {
+	log.Printf("Fetching logs for component ID: '%s'", componentID)
+	if strings.TrimSpace(componentID) == "" {
+		return nil, fmt.Errorf("component ID cannot be empty")
+	}
+	logs, err := s.componentDAO.GetcomponentLogsByComponentID(componentID)
+	if err != nil {
+		return nil, fmt.Errorf("error retrieving logs for component ID '%s': %w", componentID, err)
+	}
+	log.Printf("Retrieved %d logs for component ID: '%s'", len(logs), componentID)
+	return logs, nil
+}
+
+func (s *DefaultDeviceService) GetAllLogsByUser(userId int) ([]*models.ComponentLog, error) {
+	log.Println("Fetching all logs for the user")
+	logs, err := s.componentDAO.GetAllLogsByUser(userId)
+	if err != nil {
+		return nil, fmt.Errorf("error retrieving all logs: %w", err)
+	}
+	log.Printf("Retrieved %d logs for the user", len(logs))
+	return logs, nil
+}
+
+func (s *DefaultDeviceService) UserHasAccessToComponent(userId int, componentID string) (bool, error) {
+	log.Printf("Checking access for User ID: '%d' to component ID: '%s'", userId, componentID)
+	if userId <= 0 || strings.TrimSpace(componentID) == "" {
+		return false, fmt.Errorf("invalid user ID or component ID")
+	}
+	hasAccess, err := s.componentDAO.UserHasAccessToComponent(userId, componentID)
+	if err != nil {
+		return false, fmt.Errorf("error checking access for User ID '%d' to component ID '%s': %w", userId, componentID, err)
+	}
+	log.Printf("User ID: '%d' has access to component ID: '%s': %v", userId, componentID, hasAccess)
+	return hasAccess, nil
+}
+
+func (s *DefaultDeviceService) MarkComponentLogsAsRead(tx *sql.Tx, componentID string, logIds []int) error {
+	log.Printf("Marking logs as read for component ID: '%s'", componentID)
+	if strings.TrimSpace(componentID) == "" {
+		return fmt.Errorf("component ID cannot be empty")
+	}
+	err := s.componentDAO.MarkComponentLogsAsRead(tx, componentID, logIds)
+	if err != nil {
+		return fmt.Errorf("error marking logs as read for component ID '%s': %w", componentID, err)
+	}
+	log.Printf("Successfully marked logs as read for component ID: '%s'", componentID)
+	return nil
+}
+
+func (s *DefaultDeviceService) MarkAllLogsAsRead(tx *sql.Tx, userId int) error {
+	log.Printf("Marking all logs as read for User ID: '%d'", userId)
+	if userId <= 0 {
+		return fmt.Errorf("invalid user ID")
+	}
+	err := s.componentDAO.MarkAllLogsAsRead(tx, userId)
+	if err != nil {
+		return fmt.Errorf("error marking all logs as read for User ID '%d': %w", userId, err)
+	}
+	log.Printf("Successfully marked all logs as read for User ID: '%d'", userId)
+	return nil
+}
+
+// File: service/device_service.go (new method implementations)
+
+// --- Schedule Operations ---
+func (s *DefaultDeviceService) CreateRecurringSchedule(ctx context.Context, schedule *models.RecurringSchedule) (*models.RecurringSchedule, error) {
+	scheduleID, err := s.scheduleDAO.CreateRecurringSchedule(ctx, *schedule)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create recurring schedule: %w", err)
+	}
+	schedule.RecurringScheduleID = scheduleID
+	return schedule, nil
+}
+
+func (s *DefaultDeviceService) GetRecurringScheduleByID(ctx context.Context, scheduleID int) (*models.RecurringSchedule, error) {
+	schedule, err := s.scheduleDAO.GetRecurringScheduleByID(ctx, scheduleID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get recurring schedule by ID: %w", err)
+	}
+	return schedule, nil
+}
+
+func (s *DefaultDeviceService) GetRecurringSchedulesByDevice(ctx context.Context, deviceID string) ([]*models.RecurringSchedule, error) {
+	schedules, err := s.scheduleDAO.GetRecurringSchedulesByDevice(ctx, deviceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get recurring schedules for device %s: %w", deviceID, err)
+	}
+	// Convert []models.RecurringSchedule to []*models.RecurringSchedule
+	result := make([]*models.RecurringSchedule, len(schedules))
+	for i := range schedules {
+		result[i] = &schedules[i]
+	}
+	return result, nil
+}
+
+func (s *DefaultDeviceService) UpdateRecurringSchedule(ctx context.Context, scheduleID int, schedule *models.RecurringSchedule) error {
+	// You might add business logic here before calling the DAO, e.g., validation.
+	return s.scheduleDAO.UpdateRecurringSchedule(ctx, scheduleID, *schedule)
+}
+
+func (s *DefaultDeviceService) DeleteRecurringSchedule(ctx context.Context, scheduleID int) error {
+	return s.scheduleDAO.DeleteRecurringSchedule(ctx, scheduleID)
 }
