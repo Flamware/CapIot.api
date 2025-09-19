@@ -13,7 +13,6 @@ DROP TABLE IF EXISTS public.user_site;
 DROP TABLE IF EXISTS public.locations;
 DROP TABLE IF EXISTS public.sites;
 DROP TABLE IF EXISTS public.recurring_schedules;
-DROP TABLE IF EXISTS public.schedule_exceptions;
 DROP TABLE IF EXISTS public.devices;
 DROP TABLE IF EXISTS public.users;
 
@@ -137,5 +136,5 @@ CREATE TABLE IF NOT EXISTS public.component_log (
     );
 
 -- Octroi des privilèges au rôle 'admin' sur les tables et séquences du schéma public.
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO admin;
+GRANT SELECT, INSERT, UPDA²TE, DELETE ON ALL TABLES IN SCHEMA public TO admin;
 GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO admin;

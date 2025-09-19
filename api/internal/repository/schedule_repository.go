@@ -30,10 +30,10 @@ func (r *PostgresScheduleDAO) CreateRecurringSchedule(ctx context.Context, sched
 		priority = 10
 	} else if strings.Contains(schedule.RecurrenceRule, "FREQ=DAILY") {
 		priority = 1
+	} else if strings.Contains(schedule.RecurrenceRule, "FREQ=ONCE") {
+		priority = 1000
 	} else {
-		// Définir une priorité par défaut ou plus élevée pour les cas spéciaux
-		// par exemple, FREQ=YEARLY pourrait être 100
-		priority = 0
+		priority = 0 // Valeur par défaut si le type de récurrence n'est pas reconnu
 	}
 
 	// 2. Mettre à jour la requête SQL pour inclure la colonne priority

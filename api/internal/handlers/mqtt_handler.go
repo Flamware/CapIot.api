@@ -4,6 +4,7 @@ import (
 	"CapIot-api/internal/models"
 	"CapIot-api/internal/service"
 	"CapIot-api/internal/utils"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -140,15 +141,14 @@ func (h *MqttHandler) HandleDeviceAvailability(client mqtt.Client, msg mqtt.Mess
 			log.Printf("Error checking for existing component '%s': %v", comp.ComponentID, getErr)
 			err = getErr
 			return
-		} else {
-			log.Printf("Component '%s' already exists. Updating its status to '%s'.", comp.ComponentID, comp.ComponentStatus)
-
-			if err = h.deviceService.UpdateDeviceComponentStatus(tx, comp.ComponentID, comp.ComponentStatus); err != nil {
-				log.Printf("Error updating component status for '%s': %v", comp.ComponentID, err)
-				return
-			}
 		}
 	}
+	if err = h.publishSchedules(deviceID); err != nil {
+		log.Printf("Error publishing schedules to device '%s': %v", deviceID, err)
+	} else {
+		log.Printf("Published schedules to device '%s' successfully.", deviceID)
+	}
+	log.Printf("Device '%s' availability processed successfully.", deviceID)
 }
 
 // HandleDeviceStatus handles status updates sent by the device itself
@@ -382,7 +382,8 @@ func (d *MqttHandler) HandleCommandDevice(w http.ResponseWriter, r *http.Request
 
 	case "Stop":
 		responseMsg = fmt.Sprintf("Command '%s' sent to device '%s'", req.Command, deviceID)
-
+	case "Follow_Schedule":
+		responseMsg = fmt.Sprintf("Command '%s' sent to device '%s'", req.Command, deviceID)
 	default:
 		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Invalid command. Supported commands are 'Start' and 'Stop'.", nil, http.StatusBadRequest)
 		utils.RespondWithError(w, apiErr)
@@ -619,4 +620,38 @@ func (h *MqttHandler) publishConfigToDevice(deviceID, componentID string, minThr
 // Helper function to split the MQTT topic
 func splitTopic(topic string) []string {
 	return strings.Split(topic, "/")
+}
+
+// publishSchedules is a helper function to send schedule updates via MQTT.
+func (h *MqttHandler) publishSchedules(deviceID string) error {
+	if deviceID == "" {
+		return fmt.Errorf("deviceID cannot be empty")
+	}
+
+	schedules, err := h.deviceService.GetRecurringSchedulesByDevice(context.Background(), deviceID)
+	if err != nil {
+		log.Printf("Error retrieving schedules for device '%s': %v", deviceID, err)
+		return fmt.Errorf("failed to retrieve schedules: %w", err)
+	}
+
+	payload := map[string]interface{}{
+		"schedules": schedules,
+	}
+
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		log.Printf("Error marshalling MQTT payload for schedules: %v", err)
+		return fmt.Errorf("failed to marshal MQTT payload: %w", err)
+	}
+
+	topic := fmt.Sprintf("devices/schedules/%s", deviceID)
+	token := h.mqttClient.Publish(topic, 0, false, payloadBytes)
+	token.Wait()
+	if token.Error() != nil {
+		log.Printf("MQTT publish error for schedules: %v", token.Error())
+		return fmt.Errorf("failed to publish MQTT message: %w", token.Error())
+	}
+
+	log.Printf("Schedules sent to device '%s'.", deviceID)
+	return nil
 }

@@ -13,15 +13,19 @@ import (
 
 type DeviceHandler struct {
 	deviceService service.DeviceService
+	mqttHandler   *MqttHandler // Add this line
 }
 type assignDeviceRequest struct {
 	LocationID int `json:"locationID"`
 }
 
 // NewDeviceHandler to accept the interface type
-func NewDeviceHandler(deviceService *service.DefaultDeviceService) *DeviceHandler {
+// Add mqttHandler to the parameters and assign it
+// In handlers/device.go
+func NewDeviceHandler(deviceService *service.DefaultDeviceService, mqttHandler *MqttHandler) *DeviceHandler {
 	return &DeviceHandler{
 		deviceService: deviceService,
+		mqttHandler:   mqttHandler, // Add this line
 	}
 }
 
@@ -472,6 +476,14 @@ func (h *DeviceHandler) CreateRecurringSchedule(w http.ResponseWriter, r *http.R
 		utils.RespondWithError(w, apiErr)
 		return
 	}
+	// once created, call mqtt to send the new schedule to the device
+	err = h.mqttHandler.publishSchedules(createdSchedule.DeviceID)
+	if err != nil {
+		log.Printf("Failed to publish schedules to device %s: %v", createdSchedule.DeviceID, err)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Failed to publish schedule to device", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiErr)
+		return
+	}
 	utils.RespondWithJSON(w, http.StatusCreated, createdSchedule)
 }
 
@@ -566,5 +578,22 @@ func (h *DeviceHandler) DeleteRecurringSchedule(w http.ResponseWriter, r *http.R
 		utils.RespondWithError(w, apiErr)
 		return
 	}
+
+	// Update the device with the new schedules
+	vars = mux.Vars(r)
+	deviceID, ok := vars["deviceID"]
+	if !ok {
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Missing device ID in path", nil, http.StatusBadRequest)
+		utils.RespondWithError(w, apiErr)
+		return
+	}
+	err = h.mqttHandler.publishSchedules(deviceID)
+	if err != nil {
+		log.Printf("Failed to publish schedules to device %s: %v", deviceID, err)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Failed to publish schedule to device", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiErr)
+		return
+	}
+
 	w.WriteHeader(http.StatusNoContent)
 }

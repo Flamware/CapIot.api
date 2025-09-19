@@ -65,9 +65,9 @@ func main() {
 	notificationService := service.NewNotificationService(notificationRepo)
 
 	// Initialize handlers
-	mqttHandler := handlers.NewMqttHandler(deviceService, client)
+	MqttHandlerInstance := handlers.NewMqttHandler(deviceService, client)
 	authHandler := handlers.NewAuthHandler(authService)
-	deviceHandler := handlers.NewDeviceHandler(deviceService)
+	deviceHandler := handlers.NewDeviceHandler(deviceService, MqttHandlerInstance)
 	locationHandler := handlers.NewLocationHandler(locationService)
 	userHandler := handlers.NewUserHandler(userService)
 	notificationHandler := handlers.NewNotificationHandler(notificationService)
@@ -85,7 +85,7 @@ func main() {
 		deviceHandler,
 		locationHandler,
 		userHandler,
-		mqttHandler,
+		MqttHandlerInstance,
 		authService,
 		adminHandler,
 		notificationHandler,
