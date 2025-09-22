@@ -106,7 +106,7 @@ func (h *UserHandler) AsignUser(w http.ResponseWriter, r *http.Request) {
 
 	// Extract the location ID from the request body
 	var requestBody struct {
-		LocationID int `json:"locationID"`
+		locationID int `json:"locationID"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
@@ -121,15 +121,15 @@ func (h *UserHandler) AsignUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if the user ID and location ID are valid (greater than zero)
-	if userIDInt <= 0 || requestBody.LocationID <= 0 {
+	if userIDInt <= 0 || requestBody.locationID <= 0 {
 		http.Error(w, "Invalid user ID or location ID", http.StatusBadRequest)
 		return
 	}
 
 	// Call the service to assign the user to the location using the integer IDs
-	err = h.userService.AsignUser(r.Context(), userIDInt, requestBody.LocationID)
+	err = h.userService.AsignUser(r.Context(), userIDInt, requestBody.locationID)
 	if err != nil {
-		log.Printf("Failed to assign user %d to location %d: %v", userIDInt, requestBody.LocationID, err)
+		log.Printf("Failed to assign user %d to location %d: %v", userIDInt, requestBody.locationID, err)
 		http.Error(w, "Failed to assign user to location", http.StatusInternalServerError)
 		return
 	}

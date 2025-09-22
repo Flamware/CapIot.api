@@ -58,6 +58,10 @@ type DeviceService interface {
 	GetRecurringSchedulesByDevice(ctx context.Context, deviceID string) ([]*models.RecurringSchedule, error)
 	UpdateRecurringSchedule(ctx context.Context, scheduleID int, schedule *models.RecurringSchedule) error
 	DeleteRecurringSchedule(ctx context.Context, scheduleID int) error
+	UpdateDeviceConsumption(tx *sql.Tx, id string, current *float64, voltage *float64, power *float64) error
+	UpdateDeviceProvisioningToken(id string, token string) error
+	CheckDeviceToken(token string, id string) (bool, error)
+	CheckDeviceLocation(id string, id2 string) (bool, error)
 }
 
 // DefaultDeviceService implements the DeviceService interface
@@ -438,4 +442,48 @@ func (s *DefaultDeviceService) UpdateRecurringSchedule(ctx context.Context, sche
 
 func (s *DefaultDeviceService) DeleteRecurringSchedule(ctx context.Context, scheduleID int) error {
 	return s.scheduleDAO.DeleteRecurringSchedule(ctx, scheduleID)
+}
+
+func (s *DefaultDeviceService) UpdateDeviceConsumption(tx *sql.Tx, id string, current *float64, voltage *float64, power *float64) error {
+	if strings.TrimSpace(id) == "" {
+		return fmt.Errorf("device ID cannot be empty")
+	}
+	err := s.deviceDAO.UpdateDeviceConsumption(tx, id, current, voltage, power)
+	if err != nil {
+		return fmt.Errorf("error updating comsumption for device ID '%s': %w", id, err)
+	}
+	return nil
+}
+
+func (s *DefaultDeviceService) UpdateDeviceProvisioningToken(id string, token string) error {
+	if strings.TrimSpace(id) == "" {
+		return fmt.Errorf("device ID cannot be empty")
+	}
+	err := s.deviceDAO.UpdateDeviceProvisioningToken(id, token)
+	if err != nil {
+		return fmt.Errorf("error updating provisioning token for device ID '%s': %w", id, err)
+	}
+	return nil
+}
+
+func (s *DefaultDeviceService) CheckDeviceToken(token string, id string) (bool, error) {
+	if strings.TrimSpace(id) == "" || strings.TrimSpace(token) == "" {
+		return false, fmt.Errorf("device ID and token cannot be empty")
+	}
+	isValid, err := s.deviceDAO.CheckDeviceToken(token, id)
+	if err != nil {
+		return false, fmt.Errorf("error checking token for device ID '%s': %w", id, err)
+	}
+	return isValid, nil
+}
+
+func (s *DefaultDeviceService) CheckDeviceLocation(id string, id2 string) (bool, error) {
+	if strings.TrimSpace(id) == "" || strings.TrimSpace(id2) == "" {
+		return false, fmt.Errorf("device ID and location ID cannot be empty")
+	}
+	isValid, err := s.deviceDAO.CheckDeviceLocation(id, id2)
+	if err != nil {
+		return false, fmt.Errorf("error checking location for device ID '%s': %w", id, err)
+	}
+	return isValid, nil
 }

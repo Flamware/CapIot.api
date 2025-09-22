@@ -2,6 +2,7 @@ package route
 
 import (
 	"CapIot-api/internal/handlers"
+	"CapIot-api/internal/middleware"
 	"CapIot-api/internal/service"
 	"net/http"
 
@@ -43,6 +44,29 @@ func SetupRouter(
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	})
+	r.Handle(
+		"/api/check-location-access/{locationID}",
+		middleware.JWTAuthMiddleware(
+			middleware.CheckLocationAccess(locationHandler)(
+				http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(http.StatusOK)
+					w.Write([]byte(`{"allowed": true}`))
+				}),
+			),
+		),
+	).Methods(http.MethodGet)
+
+	r.Handle(
+		"/api/check-device-access/{deviceID}",
+		middleware.JWTAuthMiddleware(
+			middleware.CheckDeviceAccess(deviceHandler)(
+				http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(http.StatusOK)
+					w.Write([]byte(`{"allowed": true}`))
+				}),
+			),
+		),
+	).Methods(http.MethodGet)
 
 	SetupAuthRoutes(r, authHandler)
 	SetupLocationRoutes(r, locationHandler)
@@ -51,5 +75,6 @@ func SetupRouter(
 	SetupMQTTRoutes(mqttClient, mqttHandler)
 	SetupAdminRoutes(r, adminHandler, userHandler, locationHandler, deviceHandler, mqttHandler, authService) // Pass the authService directly
 	SetupNotificationsRoute(r, notificationHandler)
+
 	return r
 }

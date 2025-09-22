@@ -16,7 +16,7 @@ type DeviceHandler struct {
 	mqttHandler   *MqttHandler // Add this line
 }
 type assignDeviceRequest struct {
-	LocationID int `json:"locationID"`
+	locationID int `json:"locationID"`
 }
 
 // NewDeviceHandler to accept the interface type
@@ -459,7 +459,7 @@ func (h *DeviceHandler) CreateRecurringSchedule(w http.ResponseWriter, r *http.R
 		utils.RespondWithError(w, apiErr)
 		return
 	}
-
+	log.Printf("Schedules of handler :", schedule)
 	// You might want to get the deviceID from the URL vars instead of the body
 	vars := mux.Vars(r)
 	deviceID, ok := vars["deviceID"]
@@ -596,4 +596,91 @@ func (h *DeviceHandler) DeleteRecurringSchedule(w http.ResponseWriter, r *http.R
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *DeviceHandler) CheckDevice(id string) bool {
+	exists, err := h.deviceService.GetDeviceByDeviceID(id)
+	if err != nil {
+		log.Printf("Error checking device: %v", err)
+		return false
+	}
+	return exists != nil
+}
+
+func (h *DeviceHandler) UpdateDeviceProvisioningToken(id string, token string) bool {
+	err := h.deviceService.UpdateDeviceProvisioningToken(id, token)
+	if err != nil {
+		log.Printf("Error updating device provisioning token: %v", err)
+		return false
+	}
+	return true
+}
+
+func (h *DeviceHandler) ProvisionDevice(writer http.ResponseWriter, request *http.Request) {
+	vars := mux.Vars(request)
+	deviceID := vars["deviceID"]
+	if deviceID == "" {
+		log.Println("ProvisioningDeviceMiddleware: 'deviceID' parameter missing in URL.")
+		apiErr := models.NewAPIError(
+			models.ErrorCodeMissingParameter,
+			"deviceID parameter missing",
+			nil,
+			http.StatusBadRequest)
+		utils.RespondWithError(writer, apiErr)
+		return
+	}
+
+	// 1. Check if the device exists in the database using the device service.
+	device, err := h.deviceService.GetDeviceByID(deviceID)
+	if err != nil {
+		log.Printf("ProvisioningDeviceMiddleware: Error fetching device %s: %v", deviceID, err)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error fetching device", nil, http.StatusInternalServerError)
+		utils.RespondWithError(writer, apiErr)
+		return
+	}
+	if device == nil {
+		log.Printf("ProvisioningDeviceMiddleware: Device %s not found", deviceID)
+		apiErr := models.NewAPIError(models.ErrorCodeNotFound, "Device not found", nil, http.StatusNotFound)
+		utils.RespondWithError(writer, apiErr)
+		return
+	}
+
+	// 2. Generate a new provisioning token.
+	token := utils.GenerateRandomToken(32)
+	if token == "" {
+		log.Printf("ProvisioningDeviceMiddleware: Error generating token for device %s", deviceID)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error generating token", nil, http.StatusInternalServerError)
+		utils.RespondWithError(writer, apiErr)
+		return
+	}
+
+	// 3. Update the device record with the new token.
+	if !h.UpdateDeviceProvisioningToken(deviceID, token) {
+		log.Printf("ProvisioningDeviceMiddleware: Error updating token for device %s", deviceID)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error updating token", nil, http.StatusInternalServerError)
+		utils.RespondWithError(writer, apiErr)
+		return
+	}
+	log.Printf("ProvisioningDeviceMiddleware: Successfully updated token for device %s", deviceID)
+	// 4. Respond with the provisioning token.
+	response := map[string]string{"provisioning_token": token}
+	utils.RespondWithJSON(writer, http.StatusOK, response)
+}
+
+func (h *DeviceHandler) CheckDeviceRights(token string, id string) bool {
+	hasRights, err := h.deviceService.CheckDeviceToken(token, id)
+	if err != nil {
+		log.Printf("Error checking device rights: %v", err)
+		return false
+	}
+	return hasRights
+}
+
+func (h *DeviceHandler) CheckDeviceLocation(id string, id2 string) bool {
+	hasRights, err := h.deviceService.CheckDeviceLocation(id, id2)
+	if err != nil {
+		log.Printf("Error checking device location rights: %v", err)
+		return false
+	}
+	return hasRights
 }

@@ -6,15 +6,15 @@
 -- Nettoyage du schéma (en ordre de dépendance)
 -- ====================================================================================================
 
-DROP TABLE IF EXISTS public.component_log;
-DROP TABLE IF EXISTS public.components;
-DROP TABLE IF EXISTS public.device_location;
-DROP TABLE IF EXISTS public.user_site;
-DROP TABLE IF EXISTS public.locations;
-DROP TABLE IF EXISTS public.sites;
-DROP TABLE IF EXISTS public.recurring_schedules;
-DROP TABLE IF EXISTS public.devices;
-DROP TABLE IF EXISTS public.users;
+DROP TABLE IF EXISTS public.component_log CASCADE;
+DROP TABLE IF EXISTS public.components CASCADE;
+DROP TABLE IF EXISTS public.device_location CASCADE;
+DROP TABLE IF EXISTS public.user_site CASCADE;
+DROP TABLE IF EXISTS public.locations CASCADE;
+DROP TABLE IF EXISTS public.sites CASCADE;
+DROP TABLE IF EXISTS public.recurring_schedules CASCADE;
+DROP TABLE IF EXISTS public.devices CASCADE;
+DROP TABLE IF EXISTS public.users CASCADE;
 
 
 -- ====================================================================================================
@@ -35,6 +35,10 @@ CREATE TABLE IF NOT EXISTS public.devices (
                                               device_id TEXT PRIMARY KEY,
                                               last_seen TIMESTAMP WITH TIME ZONE,
                                               status VARCHAR(50),
+    voltage NUMERIC(10, 2),
+    current NUMERIC(10, 2),
+    power NUMERIC (10,2),
+    provisioning_token VARCHAR(255),  -- Ajout du champ pour le token de provisionnement
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                              );
 
@@ -112,12 +116,10 @@ CREATE TABLE IF NOT EXISTS public.recurring_schedules (
                                                           schedule_name VARCHAR(255),
     is_exception BOOLEAN DEFAULT FALSE,
     priority INTEGER DEFAULT 0,
-    start_time TIME WITH TIME ZONE NOT NULL,
-    end_time TIME WITH TIME ZONE NOT NULL,
-                      start_date DATE,
-                      end_date DATE,
-                      recurrence_rule TEXT NOT NULL,
-                      CONSTRAINT fk_device_recurring FOREIGN KEY (device_id) REFERENCES public.devices(device_id) ON DELETE CASCADE
+    start_time TIMESTAMP WITH TIME ZONE NOT NULL,
+    end_time TIMESTAMP WITH TIME ZONE NOT NULL,
+                           recurrence_rule TEXT NOT NULL,
+                           CONSTRAINT fk_device_recurring FOREIGN KEY (device_id) REFERENCES public.devices(device_id) ON DELETE CASCADE
     );
 
 -- ====================================================================================================
@@ -136,5 +138,5 @@ CREATE TABLE IF NOT EXISTS public.component_log (
     );
 
 -- Octroi des privilèges au rôle 'admin' sur les tables et séquences du schéma public.
-GRANT SELECT, INSERT, UPDA²TE, DELETE ON ALL TABLES IN SCHEMA public TO admin;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO admin;
 GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO admin;

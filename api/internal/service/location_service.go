@@ -18,8 +18,8 @@ func NewLocationService(dao dao.LocationDAO) *DefaultLocationService {
 type LocationService interface {
 	CreateLocation(location models.Location) error
 	GetAllLocations(ctx context.Context, page int, limit int, term string) (map[string]interface{}, error)
-	GetComponentsByLocationID(locationID string) ([]models.Component, error)
-	GetDevicesByLocationID(id string) ([]models.Device, error)
+	GetComponentsBylocationID(locationID string) ([]models.Component, error)
+	GetDevicesBylocationID(id string) ([]models.Device, error)
 	GetLocationsDevicesUsers(context context.Context, page int, limit int, term string) (map[string]interface{}, error)
 	DeleteLocation(ctx context.Context, id string) error
 	ModifyLocation(ctx context.Context, location models.Location) error
@@ -27,7 +27,7 @@ type LocationService interface {
 	GetSitesWithPagination(ctx context.Context, page int, limit int, term string) (map[string]interface{}, error)
 	DeleteSite(ctx context.Context, id int64) error
 	GetLocationsBySiteIDs(ctx context.Context, siteIDs []string, page int, limit int, term string) (map[string]interface{}, error)
-	CheckUserAccessToLocation(userID int, locationId int64) (bool, error)
+	CheckUserAccessToLocation(userID int, locationID int64) (bool, error)
 	CheckUserAccessToSite(userID int, siteID int64) (bool, error)
 }
 
@@ -76,8 +76,8 @@ func (s *DefaultLocationService) GetAllLocations(ctx context.Context, page int, 
 }
 
 // service to get components of a location
-func (s *DefaultLocationService) GetComponentsByLocationID(locationID string) ([]models.Component, error) {
-	components, err := s.dao.GetComponentsByLocationID(locationID)
+func (s *DefaultLocationService) GetComponentsBylocationID(locationID string) ([]models.Component, error) {
+	components, err := s.dao.GetComponentsBylocationID(locationID)
 	if err != nil {
 		return nil, err
 	}
@@ -86,8 +86,8 @@ func (s *DefaultLocationService) GetComponentsByLocationID(locationID string) ([
 }
 
 // service to get devices of a location
-func (s *DefaultLocationService) GetDevicesByLocationID(id string) ([]models.Device, error) {
-	devices, err := s.dao.GetDevicesByLocationID(id)
+func (s *DefaultLocationService) GetDevicesBylocationID(id string) ([]models.Device, error) {
+	devices, err := s.dao.GetDevicesBylocationID(id)
 	if err != nil {
 		return nil, err
 	}

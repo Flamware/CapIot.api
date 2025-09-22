@@ -68,7 +68,7 @@ func (h *LocationHandler) CreateLocation(w http.ResponseWriter, r *http.Request)
 	w.Write([]byte("Location created successfully"))
 }
 
-func (h *LocationHandler) GetComponentsByLocationID(w http.ResponseWriter, r *http.Request) {
+func (h *LocationHandler) GetComponentsBylocationID(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
 		utils.RespondWithError(w, apiErr)
@@ -76,14 +76,14 @@ func (h *LocationHandler) GetComponentsByLocationID(w http.ResponseWriter, r *ht
 	}
 
 	vars := mux.Vars(r)
-	locationId, ok := vars["locationId"]
+	locationID, ok := vars["locationID"]
 	if !ok {
 		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Missing location ID in path", nil, http.StatusBadRequest)
 		utils.RespondWithError(w, apiErr)
 		return
 	}
 
-	components, err := h.locationService.GetComponentsByLocationID(locationId)
+	components, err := h.locationService.GetComponentsBylocationID(locationID)
 	if err != nil {
 		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error getting components", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
 		utils.RespondWithError(w, apiErr)
@@ -93,7 +93,7 @@ func (h *LocationHandler) GetComponentsByLocationID(w http.ResponseWriter, r *ht
 	utils.RespondWithJSON(w, http.StatusOK, components)
 }
 
-func (h *LocationHandler) GetDevicesByLocationID(writer http.ResponseWriter, request *http.Request) {
+func (h *LocationHandler) GetDevicesBylocationID(writer http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodGet {
 		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
 		utils.RespondWithError(writer, apiErr)
@@ -101,14 +101,14 @@ func (h *LocationHandler) GetDevicesByLocationID(writer http.ResponseWriter, req
 	}
 
 	vars := mux.Vars(request)
-	locationId, ok := vars["locationId"]
+	locationID, ok := vars["locationID"]
 	if !ok {
 		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Missing location ID in path", nil, http.StatusBadRequest)
 		utils.RespondWithError(writer, apiErr)
 		return
 	}
 
-	devices, err := h.locationService.GetDevicesByLocationID(locationId)
+	devices, err := h.locationService.GetDevicesBylocationID(locationID)
 	if err != nil {
 		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error getting devices", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
 		utils.RespondWithError(writer, apiErr)

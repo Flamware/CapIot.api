@@ -20,14 +20,14 @@ func SetupLocationRoutes(r *mux.Router, locationHandler *handlers.LocationHandle
 
 	// Route for getting components by location ID.
 	// Requires JWT authentication and checks if the user has access to the specified location.
-	r.Handle("/api/location/{locationId}/components",
-		middleware.JWTAuthMiddleware(middleware.CheckLocationAccess(locationHandler)(http.HandlerFunc(locationHandler.GetComponentsByLocationID))),
+	r.Handle("/api/location/{locationID}/components",
+		middleware.JWTAuthMiddleware(middleware.CheckLocationAccess(locationHandler)(http.HandlerFunc(locationHandler.GetComponentsBylocationID))),
 	).Methods(http.MethodGet)
 
 	// Route for getting devices by location ID.
 	// Requires JWT authentication and checks if the user has access to the specified location.
-	r.Handle("/api/location/{locationId}/devices",
-		middleware.JWTAuthMiddleware(middleware.CheckLocationAccess(locationHandler)(http.HandlerFunc(locationHandler.GetDevicesByLocationID))),
+	r.Handle("/api/location/{locationID}/devices",
+		middleware.JWTAuthMiddleware(middleware.CheckLocationAccess(locationHandler)(http.HandlerFunc(locationHandler.GetDevicesBylocationID))),
 	).Methods(http.MethodGet)
 
 	// Route for getting locations filtered by site IDs.

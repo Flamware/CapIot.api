@@ -28,4 +28,8 @@ type DeviceDAO interface {
 	SetDeviceToLocation(ctx context.Context, id string, id2 int) error
 	FindAllWithComponentsAndLocations(ctx context.Context, limit int, offset int, search string) ([]*models.DeviceWithComponentsAndLocation, error)
 	CountAll(ctx context.Context, search string) (int, error)
+	UpdateDeviceConsumption(tx *sql.Tx, id string, current *float64, voltage *float64, power *float64) error
+	UpdateDeviceProvisioningToken(id string, token string) error
+	CheckDeviceToken(token string, id string) (bool, error)
+	CheckDeviceLocation(id string, id2 string) (bool, error)
 }

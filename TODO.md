@@ -1,23 +1,4 @@
-## General
-
-## Location
-unique ID
-## Devices
-unique ID
-## Overview
-- Add various statistics such as:
-    - Total number of devices
-    - Total number of users
-    - Total number of locations
-
-## Users
-unique ID
-## Profile
-- Correct Role vision
-- Add "Change Password" functionality
-- Correct Created At mention
-
-## History
-
-## Dashboard
-- Implement Pagination
+## TO FIX
+- When deleting a location, stop the devices !
+- Generate a token to the STM32 to secure the communication between influxdb and the STM32.
+- Add rights to admin to command the devices

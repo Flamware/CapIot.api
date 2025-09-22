@@ -57,6 +57,12 @@ type AlertPayload struct {
 	Alert       string `json:"alert"`
 	Timestamp   string `json:"timestamp"`
 }
+type ConsumptionPayload struct {
+	DeviceID string  `json:"device_id"`
+	Voltage  float64 `json:"voltage"`
+	Current  float64 `json:"current"`
+	Power    float64 `json:"power"`
+}
 
 // HandleDeviceAvailability gère le message de disponibilité de l'appareil et effectue le provisionnement
 func (h *MqttHandler) HandleDeviceAvailability(client mqtt.Client, msg mqtt.Message) {
@@ -148,6 +154,30 @@ func (h *MqttHandler) HandleDeviceAvailability(client mqtt.Client, msg mqtt.Mess
 	} else {
 		log.Printf("Published schedules to device '%s' successfully.", deviceID)
 	}
+	linkedComponents, getCompErr := h.deviceService.GetComponentsByDeviceID(deviceID)
+	if getCompErr != nil {
+		log.Printf("Error getting linked components for device '%s': %v", deviceID, getCompErr)
+		err = getCompErr
+		return
+	}
+
+	for _, component := range linkedComponents {
+		minThreshold := 0.0
+		if component.MinThreshold != nil {
+			minThreshold = *component.MinThreshold
+		}
+		maxThreshold := 0.0
+		if component.MaxThreshold != nil {
+			maxThreshold = *component.MaxThreshold
+		}
+
+		if err = h.publishConfigToDevice(deviceID, component.ComponentID, &minThreshold, &maxThreshold, component.MaxRunningHours); err != nil {
+			log.Printf("Error re-sending config for component '%s' to device '%s': %v\n", component.ComponentID, deviceID, err)
+		} else {
+			log.Printf("Resent config to device '%s' for component '%s' (Min: %.2f, Max: %.2f) after 'Running' status.\n",
+				deviceID, component.ComponentID, minThreshold, maxThreshold)
+		}
+	}
 	log.Printf("Device '%s' availability processed successfully.", deviceID)
 }
 
@@ -166,7 +196,7 @@ func (h *MqttHandler) HandleDeviceStatus(client mqtt.Client, msg mqtt.Message) {
 	var statusPayload struct {
 		DeviceID   string  `json:"device_id"`
 		Status     string  `json:"status"`
-		LocationID float64 `json:"location_id,omitempty"`
+		locationID float64 `json:"location_id,omitempty"`
 	}
 
 	if err := json.Unmarshal(msg.Payload(), &statusPayload); err != nil {
@@ -196,6 +226,15 @@ func (h *MqttHandler) HandleDeviceStatus(client mqtt.Client, msg mqtt.Message) {
 			tx.Commit()
 		}
 	}()
+	// if status is offline update the consumption to null
+	if statusPayload.Status == "offline" {
+		log.Printf("Device '%s' is offline. Setting consumption values to null.\n", deviceID)
+		// Update consumption values to null
+		if err = h.deviceService.UpdateDeviceConsumption(tx, deviceID, nil, nil, nil); err != nil {
+			log.Printf("Error updating consumption to null for device '%s': %v", deviceID, err)
+			return
+		}
+	}
 
 	if err = h.deviceService.UpdateDeviceOperationalStatus(tx, deviceID, models.OperationalStatus(statusPayload.Status)); err != nil {
 		log.Printf("Error updating device '%s' operational status to '%s': %v", deviceID, statusPayload.Status, err)
@@ -204,33 +243,6 @@ func (h *MqttHandler) HandleDeviceStatus(client mqtt.Client, msg mqtt.Message) {
 	if err = h.deviceService.UpdateDeviceLastSeenAndStatus(tx, deviceID, models.OperationalStatus(statusPayload.Status)); err != nil {
 		log.Printf("Error updating device '%s' last seen from status update: %v\n", deviceID, err)
 		return
-	}
-
-	if statusPayload.Status == "Running" && statusPayload.LocationID != 0 {
-		linkedComponents, getCompErr := h.deviceService.GetComponentsByDeviceID(deviceID)
-		if getCompErr != nil {
-			log.Printf("Error getting linked components for device '%s': %v", deviceID, getCompErr)
-			err = getCompErr
-			return
-		}
-
-		for _, component := range linkedComponents {
-			minThreshold := 0.0
-			if component.MinThreshold != nil {
-				minThreshold = *component.MinThreshold
-			}
-			maxThreshold := 0.0
-			if component.MaxThreshold != nil {
-				maxThreshold = *component.MaxThreshold
-			}
-
-			if err = h.publishConfigToDevice(deviceID, component.ComponentID, &minThreshold, &maxThreshold, component.MaxRunningHours); err != nil {
-				log.Printf("Error re-sending config for component '%s' to device '%s': %v\n", component.ComponentID, deviceID, err)
-			} else {
-				log.Printf("Resent config to device '%s' for component '%s' (Min: %.2f, Max: %.2f) after 'Running' status.\n",
-					deviceID, component.ComponentID, minThreshold, maxThreshold)
-			}
-		}
 	}
 }
 
@@ -654,4 +666,52 @@ func (h *MqttHandler) publishSchedules(deviceID string) error {
 
 	log.Printf("Schedules sent to device '%s'.", deviceID)
 	return nil
+}
+
+// This func handles the data of : current, voltage and power sent per a device
+func (h *MqttHandler) HandleConsumption(client mqtt.Client, message mqtt.Message) {
+	log.Printf("Received consumption update on topic: %s, message: %s\n", message.Topic(), string(message.Payload()))
+
+	// Expected topic format: devices/consumption/<deviceID>
+	parts := strings.Split(message.Topic(), "/")
+	if len(parts) != 3 || parts[0] != "devices" || parts[1] != "consumption" {
+		log.Printf("Received message on unexpected consumption topic format: %s\n", message.Topic())
+		return
+	}
+
+	var payload ConsumptionPayload
+	if err := json.Unmarshal(message.Payload(), &payload); err != nil {
+		log.Printf("Error unmarshalling JSON for consumption on topic '%s': %v\n", message.Topic(), err)
+		return
+	}
+
+	// Ensure the payload device matches the topic device
+	if payload.DeviceID != parts[2] {
+		log.Printf("Warning: DeviceID mismatch between topic (%s) and payload (%s)\n", parts[2], payload.DeviceID)
+	}
+
+	// Begin transaction
+	tx, err := h.deviceService.BeginTransaction()
+	if err != nil {
+		log.Printf("Error beginning transaction for consumption update: %v", err)
+		return
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+			panic(r)
+		} else if err != nil {
+			tx.Rollback()
+		} else {
+			tx.Commit()
+		}
+	}()
+
+	// Update the device consumption in DB
+	if err = h.deviceService.UpdateDeviceConsumption(tx, payload.DeviceID, &payload.Current, &payload.Voltage, &payload.Power); err != nil {
+		log.Printf("Error updating consumption for device '%s': %v", payload.DeviceID, err)
+		return
+	}
+
+	log.Printf("Consumption updated successfully for device '%s'", payload.DeviceID)
 }

@@ -43,11 +43,6 @@ func SetupAdminRoutes(r *mux.Router,
 	adminRouter.HandleFunc("/site/create", locationHandler.CreateSite).Methods(http.MethodPost)
 	adminRouter.HandleFunc("/site/{siteID}", locationHandler.DeleteSite).Methods(http.MethodDelete)
 
-	// --- Routes accessible by 'admin' and 'operateur' roles ---
-
-	// The `RoleCheckMiddleware` is applied directly to each handler function
-	// with a list of allowed roles, giving you fine-grained control.
-
 	// Site Routes
 	apiRouter.Handle("/sites",
 		middleware.RoleCheckMiddleware(authService, []string{"admin", "operateur"})(http.HandlerFunc(locationHandler.GetSitesWithPagination)),
@@ -64,7 +59,7 @@ func SetupAdminRoutes(r *mux.Router,
 		middleware.RoleCheckMiddleware(authService, []string{"admin", "operateur"})(http.HandlerFunc(adminHandler.ModifyLocation)),
 	).Methods(http.MethodPut)
 	apiRouter.Handle("/location/{locationID}",
-		middleware.RoleCheckMiddleware(authService, []string{"admin"})(http.HandlerFunc(adminHandler.DeleteLocation)),
+		middleware.RoleCheckMiddleware(authService, []string{"admin", "operateur"})(http.HandlerFunc(adminHandler.DeleteLocation)),
 	).Methods(http.MethodDelete)
 
 	// Device Routes
@@ -72,13 +67,13 @@ func SetupAdminRoutes(r *mux.Router,
 		middleware.RoleCheckMiddleware(authService, []string{"admin", "operateur"})(http.HandlerFunc(adminHandler.GetDevicescomponentsLocations)),
 	).Methods(http.MethodGet)
 	apiRouter.Handle("/locations-devices-users",
-		middleware.RoleCheckMiddleware(authService, []string{"admin", "operateur"})(http.HandlerFunc(adminHandler.GetLocationsDevicesUsers)),
+		middleware.RoleCheckMiddleware(authService, []string{"admin"})(http.HandlerFunc(adminHandler.GetLocationsDevicesUsers)),
 	).Methods(http.MethodGet)
 	apiRouter.Handle("/assign-device",
-		middleware.RoleCheckMiddleware(authService, []string{"admin"})(http.HandlerFunc(adminHandler.AssignDeviceToLocation)),
+		middleware.RoleCheckMiddleware(authService, []string{"admin", "operateur"})(http.HandlerFunc(adminHandler.AssignDeviceToLocation)),
 	).Methods(http.MethodPost)
 	apiRouter.Handle("/device/{deviceID}",
-		middleware.RoleCheckMiddleware(authService, []string{"admin"})(http.HandlerFunc(deviceHandler.DeleteDevice)),
+		middleware.RoleCheckMiddleware(authService, []string{"admin", "operateur"})(http.HandlerFunc(deviceHandler.DeleteDevice)),
 	).Methods(http.MethodDelete)
 
 	apiRouter.Handle("/devices/{deviceID}/components",

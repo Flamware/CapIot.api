@@ -62,9 +62,9 @@ func (d *PostgresDeviceDAO) DeviceExists(deviceID string) (bool, error) {
 
 // GetDeviceByID retrieves a device record by its ID.
 func (d *PostgresDeviceDAO) GetDeviceByID(id string) (*models.Device, error) {
-	row := d.db.QueryRow("SELECT device_id, last_seen, status, created_at FROM devices WHERE device_id = $1", id)
+	row := d.db.QueryRow("SELECT device_id, last_seen, status, voltage, current, power, created_at FROM devices WHERE device_id = $1", id)
 	var device models.Device
-	err := row.Scan(&device.DeviceID, &device.LastSeen, &device.Status, &device.CreatedAt)
+	err := row.Scan(&device.DeviceID, &device.LastSeen, &device.Status, &device.Voltage, &device.Current, &device.Power, &device.CreatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, sql.ErrNoRows
@@ -96,7 +96,7 @@ func (d *PostgresDeviceDAO) UpdateDeviceOperationalStatus(tx *sql.Tx, id string,
 
 // GetAllDevices retrieves all device records from the database.
 func (d *PostgresDeviceDAO) GetAllDevices() ([]*models.Device, error) {
-	rows, err := d.db.Query("SELECT device_id, last_seen, status, created_at FROM devices")
+	rows, err := d.db.Query("SELECT device_id, last_seen, status, voltage, current, power, created_at FROM devices")
 	if err != nil {
 		return nil, fmt.Errorf("failed to query all devices: %w", err)
 	}
@@ -105,7 +105,7 @@ func (d *PostgresDeviceDAO) GetAllDevices() ([]*models.Device, error) {
 	var devices []*models.Device
 	for rows.Next() {
 		var dev models.Device
-		if err := rows.Scan(&dev.DeviceID, &dev.LastSeen, &dev.Status, &dev.CreatedAt); err != nil {
+		if err := rows.Scan(&dev.DeviceID, &dev.LastSeen, &dev.Status, &dev.Voltage, &dev.Current, &dev.Power, &dev.CreatedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan device row: %w", err)
 		}
 		devices = append(devices, &dev)
@@ -170,14 +170,14 @@ func (d *PostgresDeviceDAO) SetDeviceToLocation(ctx context.Context, deviceID st
 
 	// We use a CTE (Common Table Expression) to ensure this is an atomic operation.
 	query := `
-        WITH old_location AS (
-            UPDATE public.device_location
-            SET is_current = FALSE
-            WHERE device_id = $1 AND is_current = TRUE
-        )
-        INSERT INTO public.device_location (device_id, location_id, assigned_at, is_current)
-        VALUES ($1, $2, NOW(), TRUE)
-    `
+		WITH old_location AS (
+			UPDATE public.device_location
+			SET is_current = FALSE
+			WHERE device_id = $1 AND is_current = TRUE
+		)
+		INSERT INTO public.device_location (device_id, location_id, assigned_at, is_current)
+		VALUES ($1, $2, NOW(), TRUE)
+	`
 
 	_, err := executor.ExecContext(ctx, query, deviceID, locationID)
 	if err != nil {
@@ -261,4 +261,76 @@ func (d *PostgresDeviceDAO) CheckDeviceAccess(userID int, deviceID string) (bool
 		return false, fmt.Errorf("failed to check user access to device: %w", err)
 	}
 	return hasAccess, nil
+}
+
+// UpdateDeviceConsumption updates the current, voltage, and power consumption of a device within a transaction.
+func (d *PostgresDeviceDAO) UpdateDeviceConsumption(tx *sql.Tx, id string, current *float64, voltage *float64, power *float64) error {
+	executor := d.getExecutor(tx)
+	_, err := executor.Exec("UPDATE devices SET current = $1, voltage = $2, power = $3 WHERE device_id = $4", current, voltage, power, id)
+	if err != nil {
+		return fmt.Errorf("failed to update device consumption: %w", err)
+	}
+	return nil
+}
+
+// UpdateDeviceProvisioningToken updates the provisioning token for a device.
+func (d *PostgresDeviceDAO) UpdateDeviceProvisioningToken(id string, token string) error {
+	_, err := d.db.Exec("UPDATE devices SET provisioning_token = $1 WHERE device_id = $2", token, id)
+	if err != nil {
+		return fmt.Errorf("failed to update device provisioning token: %w", err)
+	}
+	return nil
+}
+
+// CheckDeviceProvisioningToken checks if the provided provisioning token matches the stored token for a device.
+func (d *PostgresDeviceDAO) CheckDeviceProvisioningToken(deviceID string, token string) (bool, error) {
+	var storedToken sql.NullString
+	err := d.db.QueryRow("SELECT provisioning_token FROM devices WHERE device_id = $1", deviceID).Scan(&storedToken)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil // Device not found
+		}
+		return false, fmt.Errorf("failed to retrieve provisioning token: %w", err)
+	}
+
+	if !storedToken.Valid || storedToken.String != token {
+		return false, nil // Token does not match
+	}
+
+	return true, nil // Token matches
+}
+
+// CheckDeviceToken checks if the provided token matches the stored token for a device.
+func (d *PostgresDeviceDAO) CheckDeviceToken(token string, deviceID string) (bool, error) {
+	var storedToken sql.NullString
+	err := d.db.QueryRow("SELECT provisioning_token FROM devices WHERE device_id = $1", deviceID).Scan(&storedToken)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil // Device not found
+		}
+		return false, fmt.Errorf("failed to retrieve device token: %w", err)
+	}
+
+	if !storedToken.Valid || storedToken.String != token {
+		return false, nil // Token does not match
+	}
+
+	return true, nil // Token matches
+}
+
+// CheckDeviceLocation checks if a device is assigned to a specific location.
+func (d *PostgresDeviceDAO) CheckDeviceLocation(deviceID string, locationID string) (bool, error) {
+	var exists bool
+	query := `
+		SELECT EXISTS (
+			SELECT 1
+			FROM device_location
+			WHERE device_id = $1 AND location_id = $2 AND is_current = true
+		)
+	`
+	err := d.db.QueryRow(query, deviceID, locationID).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("error checking device location: %w", err)
+	}
+	return exists, nil
 }

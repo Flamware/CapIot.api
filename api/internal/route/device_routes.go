@@ -18,6 +18,24 @@ func SetupDeviceRoute(r *mux.Router, deviceHandler *handlers.DeviceHandler, mqtt
 	// Routes for a specific device, require CheckDeviceAccess
 	r.Handle("/api/devices/{deviceID}", middleware.JWTAuthMiddleware(middleware.CheckDeviceAccess(deviceHandler)(http.HandlerFunc(deviceHandler.DeleteDevice)))).Methods(http.MethodDelete)
 	r.Handle("/api/devices/{deviceID}", middleware.JWTAuthMiddleware(middleware.CheckDeviceAccess(deviceHandler)(http.HandlerFunc(deviceHandler.GetDeviceByID)))).Methods(http.MethodGet)
+	r.Handle("/api/devices/provisioning/{deviceID}", http.HandlerFunc(deviceHandler.ProvisionDevice)).Methods(http.MethodPost)
+	r.Handle("/api/devices/check-device-rights/{deviceID}",
+		middleware.CheckDeviceRights(deviceHandler)(
+			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte("Access granted"))
+			}),
+		),
+	).Methods(http.MethodGet)
+	r.Handle("/api/devices/check-device-location-rights/{deviceID}/{locationID}",
+		middleware.CheckDeviceLocationRights(deviceHandler)(
+			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte("Access granted"))
+			}),
+		),
+	).Methods(http.MethodGet)
+
 	r.Handle("/api/devices/{deviceID}/components", middleware.JWTAuthMiddleware(middleware.CheckDeviceAccess(deviceHandler)(http.HandlerFunc(deviceHandler.GetComponentsByDeviceID)))).Methods(http.MethodGet)
 	r.Handle("/api/devices/{deviceID}/logs", middleware.JWTAuthMiddleware(middleware.CheckDeviceAccess(deviceHandler)(http.HandlerFunc(deviceHandler.GetLogs)))).Methods(http.MethodGet)
 	r.Handle("/api/devices/{deviceID}/components/{componentID}/command", middleware.JWTAuthMiddleware(middleware.CheckDeviceAccess(deviceHandler)(http.HandlerFunc(mqttHandler.HandleCommandComponent)))).Methods(http.MethodPost)

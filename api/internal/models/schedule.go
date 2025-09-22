@@ -11,10 +11,8 @@ type RecurringSchedule struct {
 	RecurringScheduleID int       `json:"recurring_schedule_id"`
 	DeviceID            string    `json:"device_id"`
 	ScheduleName        string    `json:"schedule_name"`
-	StartTime           time.Time `json:"start_time"`
-	EndTime             time.Time `json:"end_time"`
-	StartDate           time.Time `json:"start_date"`
-	EndDate             time.Time `json:"end_date"`
+	StartTime           time.Time `json:"start_time"` // This contains both the date and the time
+	EndTime             time.Time `json:"end_time"`   // This contains both the date and the time
 	RecurrenceRule      string    `json:"recurrence_rule"`
 	IsException         bool      `json:"is_exception"`
 }

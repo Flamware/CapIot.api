@@ -2,6 +2,8 @@ package utils
 
 import (
 	"CapIot-api/internal/models"
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"github.com/dgrijalva/jwt-go"
 	"log"
@@ -50,4 +52,13 @@ func GenerateCustomJWT(Authresult *models.AuthResult, username string, user_id i
 	}
 
 	return tokenString, nil
+}
+
+func GenerateRandomToken(length int) string {
+	b := make([]byte, length)
+	if _, err := rand.Read(b); err != nil {
+		return ""
+	}
+	// Encode the random bytes into a URL-safe base64 string
+	return base64.URLEncoding.EncodeToString(b)
 }

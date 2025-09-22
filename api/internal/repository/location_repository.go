@@ -370,8 +370,8 @@ func (r *PostgresLocationRepository) GetMySites(ctx context.Context, userID int)
 	return sites, nil
 }
 
-// GetComponentsByLocationID retrieves components associated with a location ID.
-func (r *PostgresLocationRepository) GetComponentsByLocationID(locationID string) ([]models.Component, error) {
+// GetComponentsBylocationID retrieves components associated with a location ID.
+func (r *PostgresLocationRepository) GetComponentsBylocationID(locationID string) ([]models.Component, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -407,12 +407,12 @@ func (r *PostgresLocationRepository) GetComponentsByLocationID(locationID string
 	return components, nil
 }
 
-// GetDevicesByLocationID retrieves devices associated with a location ID.
-func (r *PostgresLocationRepository) GetDevicesByLocationID(id string) ([]models.Device, error) {
+// GetDevicesBylocationID retrieves devices associated with a location ID.
+func (r *PostgresLocationRepository) GetDevicesBylocationID(id string) ([]models.Device, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	query := `SELECT d.device_id, d.status, d.last_seen
+	query := `SELECT d.device_id, d.status, d.last_seen, d.power, d.voltage, d.current
     FROM devices d
     JOIN device_location dl ON d.device_id = dl.device_id
     WHERE dl.location_id = $1`
@@ -427,7 +427,7 @@ func (r *PostgresLocationRepository) GetDevicesByLocationID(id string) ([]models
 	devices := []models.Device{}
 	for rows.Next() {
 		var device models.Device
-		if err := rows.Scan(&device.DeviceID, &device.Status, &device.LastSeen); err != nil {
+		if err := rows.Scan(&device.DeviceID, &device.Status, &device.LastSeen, &device.Power, &device.Voltage, &device.Current); err != nil {
 			log.Printf("Error scanning device row: %v\n", err)
 			return []models.Device{}, err
 		}

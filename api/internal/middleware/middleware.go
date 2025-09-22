@@ -122,66 +122,6 @@ func RoleCheckMiddleware(authService service.AuthService, requiredRoles []string
 	}
 }
 
-// CheckSiteAccess checks if the user has access to a specific site based on a location ID.
-func CheckSiteAccess(locationService service.LocationService) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Retrieve claims from the context
-			claims, ok := r.Context().Value(config.UserClaimsContextKey).(*utils.Claims)
-			if !ok {
-				log.Println("CheckSiteAccess: Claims not found or invalid type in context.")
-				apiErr := models.NewAPIError(models.ErrorCodeUnauthorized, "Unauthorized", nil, http.StatusUnauthorized)
-				utils.RespondWithError(w, apiErr)
-				return
-			}
-
-			userId := claims.ID
-			if !ok {
-				log.Println("CheckSiteAccess: 'sub' (Auth0 User ID) not found or is not a string.")
-				apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Internal Server Error", nil, http.StatusInternalServerError)
-				utils.RespondWithError(w, apiErr)
-				return
-			}
-
-			// Extract locationID from URL parameters, its a int64
-			vars := mux.Vars(r)
-			locationIDStr := vars["locationId"]
-			if locationIDStr == "" {
-				log.Println("CheckSiteAccess: 'locationId' parameter missing in URL.")
-				apiErr := models.NewAPIError(models.ErrorCodeMissingParameter, "locationId parameter missing", nil, http.StatusBadRequest)
-				utils.RespondWithError(w, apiErr)
-				return
-			}
-			locationID, err := strconv.ParseInt(locationIDStr, 10, 64)
-			if err != nil {
-				log.Printf("CheckSiteAccess: Invalid locationId format: %v", err)
-				apiErr := models.NewAPIError(models.ErrorCodeInvalidFormat, "Invalid locationId format", nil, http.StatusBadRequest)
-				utils.RespondWithError(w, apiErr)
-				return
-			}
-
-			// Check if the user has access to the location's site
-			hasAccess, err := locationService.CheckUserAccessToLocation(userId, locationID)
-			if err != nil {
-				log.Printf("CheckSiteAccess: Error checking access for Auth0 User ID %s to location %s: %v", userId, locationID, err)
-				apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error checking access permissions", nil, http.StatusInternalServerError)
-				utils.RespondWithError(w, apiErr)
-				return
-			}
-
-			if !hasAccess {
-				log.Printf("CheckSiteAccess: Auth0 User ID %s does not have access to location %s", userId, locationID)
-				apiErr := models.NewAPIError(models.ErrorCodeInsufficientPermissions, "Insufficient permissions for this location", nil, http.StatusForbidden)
-				utils.RespondWithError(w, apiErr)
-				return
-			}
-
-			log.Printf("CheckSiteAccess: User %s has access to location %s. Proceeding.", userId, locationID)
-			next.ServeHTTP(w, r)
-		})
-	}
-}
-
 // CheckLocationAccess checks if the user has access to a specific site based on a site ID.
 func CheckLocationAccess(locationHandler *handlers.LocationHandler) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -205,12 +145,12 @@ func CheckLocationAccess(locationHandler *handlers.LocationHandler) func(http.Ha
 				return
 			}
 			vars := mux.Vars(r)
-			locationIDStr := vars["locationId"]
+			locationIDStr := vars["locationID"]
 			if locationIDStr == "" {
-				log.Println("CheckLocationAccess: 'locationId' parameter missing in URL.")
+				log.Println("CheckLocationAccess: 'locationID' parameter missing in URL.")
 				apiErr := models.NewAPIError(
 					models.ErrorCodeMissingParameter,
-					"locationId parameter missing",
+					"locationID parameter missing",
 					nil,
 					http.StatusBadRequest)
 				utils.RespondWithError(w, apiErr)
@@ -218,8 +158,8 @@ func CheckLocationAccess(locationHandler *handlers.LocationHandler) func(http.Ha
 			}
 			locationID, err := strconv.ParseInt(locationIDStr, 10, 64)
 			if err != nil {
-				log.Printf("CheckLocationAccess: Invalid locationId format: %v", err)
-				apiErr := models.NewAPIError(models.ErrorCodeInvalidFormat, "Invalid locationId format", nil, http.StatusBadRequest)
+				log.Printf("CheckLocationAccess: Invalid locationID format: %v", err)
+				apiErr := models.NewAPIError(models.ErrorCodeInvalidFormat, "Invalid locationID format", nil, http.StatusBadRequest)
 				utils.RespondWithError(w, apiErr)
 				return
 			}
@@ -266,10 +206,10 @@ func CheckDeviceAccess(deviceHandler *handlers.DeviceHandler) func(http.Handler)
 			vars := mux.Vars(r)
 			deviceID := vars["deviceID"]
 			if deviceID == "" {
-				log.Println("checkDeviceAccess: 'deviceId' parameter missing in URL.")
+				log.Println("checkDeviceAccess: 'deviceID' parameter missing in URL.")
 				apiErr := models.NewAPIError(
 					models.ErrorCodeMissingParameter,
-					"deviceId parameter missing",
+					"deviceID parameter missing",
 					nil,
 					http.StatusBadRequest)
 				utils.RespondWithError(w, apiErr)
@@ -285,6 +225,98 @@ func CheckDeviceAccess(deviceHandler *handlers.DeviceHandler) func(http.Handler)
 				return
 			}
 			log.Printf("checkDeviceAccess: User %s has access to device %s. Proceeding.", userIDInt, deviceID)
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func CheckDeviceRights(handler *handlers.DeviceHandler) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Retrieve the deviceID from the URL path, as that's how it's defined in the route.
+			vars := mux.Vars(r)
+			deviceID := vars["deviceID"]
+			log.Printf("CheckDeviceRights: URL Vars: %+v")
+			if deviceID == "" {
+				log.Println("CheckDeviceRights: 'deviceID' parameter missing in URL.")
+				apiErr := models.NewAPIError(
+					models.ErrorCodeMissingParameter,
+					"deviceID parameter missing",
+					nil,
+					http.StatusBadRequest)
+				utils.RespondWithError(w, apiErr)
+				return
+			}
+			// print the token for debugging purposes
+			// Check the token provided in the Authorization header
+			tokenHeader := r.Header.Get("Authorization")
+			// Parse the token to ensure it's valid
+			token := strings.TrimPrefix(tokenHeader, "Bearer ")
+			if token == tokenHeader {
+				log.Printf("CheckDeviceRights: Invalid token format, missing 'Bearer ': %s", tokenHeader)
+				apiErr := models.NewAPIError(models.ErrorCodeInvalidToken, "Invalid token format, missing 'Bearer '", nil, http.StatusUnauthorized)
+				utils.RespondWithError(w, apiErr)
+				return
+			}
+			allowed := handler.CheckDeviceRights(token, deviceID) // Assuming this function exists on your handler
+			if !allowed {
+				http.Error(w, "Access denied for device", http.StatusForbidden)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func CheckDeviceLocationRights(handler *handlers.DeviceHandler) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Retrieve the deviceID and locationID from the URL path.
+			log.Printf("CheckDeviceLocationRights: Middleware initialized with handler: %v", handler)
+			vars := mux.Vars(r)
+			deviceID := vars["deviceID"]
+			if deviceID == "" {
+				log.Println("CheckDeviceLocationRights: 'deviceID' parameter missing in URL.")
+				apiErr := models.NewAPIError(
+					models.ErrorCodeMissingParameter,
+					"deviceID parameter missing",
+					nil,
+					http.StatusBadRequest)
+				utils.RespondWithError(w, apiErr)
+				return
+			}
+			locationID := vars["locationID"]
+			if locationID == "" {
+				log.Println("CheckDeviceLocationRights: 'locationID' parameter missing in URL.")
+				apiErr := models.NewAPIError(
+					models.ErrorCodeMissingParameter,
+					"locationID parameter missing",
+					nil,
+					http.StatusBadRequest)
+				utils.RespondWithError(w, apiErr)
+				return
+			}
+
+			// Check the token provided in the Authorization header.
+			tokenHeader := r.Header.Get("Authorization")
+
+			// Check the token's correctness.
+			allowed := handler.CheckDeviceRights(tokenHeader, deviceID)
+			if !allowed {
+				http.Error(w, "Access denied for device", http.StatusForbidden)
+				return
+			}
+
+			// Check if the device belongs to the location.
+			allowed = handler.CheckDeviceLocation(deviceID, locationID)
+			if !allowed {
+				http.Error(w, "Device does not belong to the specified location", http.StatusForbidden)
+				return
+			}
+
+			// If all checks pass, proceed to the next handler in the chain.
+			log.Printf("CheckDeviceLocationRights: User has rights for device %s and location %s. Proceeding.", deviceID, locationID)
 			next.ServeHTTP(w, r)
 		})
 	}

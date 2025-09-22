@@ -35,13 +35,12 @@ func (r *PostgresScheduleDAO) CreateRecurringSchedule(ctx context.Context, sched
 	} else {
 		priority = 0 // Valeur par défaut si le type de récurrence n'est pas reconnu
 	}
-
 	// 2. Mettre à jour la requête SQL pour inclure la colonne priority
 	query := `
         INSERT INTO public.recurring_schedules (
-            device_id, schedule_name, start_time, end_time, start_date, end_date, recurrence_rule, priority, is_exception
+            device_id, schedule_name, start_time, end_time, recurrence_rule, priority, is_exception
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8,$9)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING recurring_schedule_id
     `
 	var scheduleID int
@@ -52,8 +51,6 @@ func (r *PostgresScheduleDAO) CreateRecurringSchedule(ctx context.Context, sched
 		schedule.ScheduleName,
 		schedule.StartTime,
 		schedule.EndTime,
-		schedule.StartDate,
-		schedule.EndDate,
 		schedule.RecurrenceRule,
 		priority, // 3. Ajouter la valeur de priorité ici
 		schedule.IsException,
@@ -70,7 +67,7 @@ func (r *PostgresScheduleDAO) CreateRecurringSchedule(ctx context.Context, sched
 // GetRecurringScheduleByID retrieves a recurring schedule by its ID.
 func (r *PostgresScheduleDAO) GetRecurringScheduleByID(ctx context.Context, scheduleID int) (*models.RecurringSchedule, error) {
 	query := `
-        SELECT recurring_schedule_id, device_id, schedule_name, start_time, end_time, start_date, end_date, recurrence_rule, is_exception
+        SELECT recurring_schedule_id, device_id, schedule_name, start_time, end_time, recurrence_rule, is_exception
         FROM public.recurring_schedules
         WHERE recurring_schedule_id = $1
     `
@@ -81,8 +78,6 @@ func (r *PostgresScheduleDAO) GetRecurringScheduleByID(ctx context.Context, sche
 		&s.ScheduleName,
 		&s.StartTime,
 		&s.EndTime,
-		&s.StartDate,
-		&s.EndDate,
 		&s.RecurrenceRule,
 		&s.IsException,
 	)
@@ -99,14 +94,14 @@ func (r *PostgresScheduleDAO) GetRecurringScheduleByID(ctx context.Context, sche
 // GetRecurringSchedulesByDevice retrieves all recurring schedules for a given device.
 func (r *PostgresScheduleDAO) GetRecurringSchedulesByDevice(ctx context.Context, deviceID string) ([]models.RecurringSchedule, error) {
 	query := `
-        SELECT recurring_schedule_id, device_id, schedule_name, start_time, end_time, start_date, end_date, recurrence_rule, is_exception
-        FROM public.recurring_schedules
-        WHERE device_id = $1
-        ORDER BY start_date ASC, start_time ASC
-    `
+        SELECT recurring_schedule_id, device_id, schedule_name, start_time, end_time, recurrence_rule, is_exception
+		FROM public.recurring_schedules
+		WHERE device_id = $1
+		ORDER BY priority DESC, start_time ASC
+				`
 	rows, err := r.db.QueryContext(ctx, query, deviceID)
 	if err != nil {
-		log.Printf("Error getting recurring schedules for device: %v", err)
+		log.Printf("Error getting recurring schedules by device: %v", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -120,8 +115,6 @@ func (r *PostgresScheduleDAO) GetRecurringSchedulesByDevice(ctx context.Context,
 			&s.ScheduleName,
 			&s.StartTime,
 			&s.EndTime,
-			&s.StartDate,
-			&s.EndDate,
 			&s.RecurrenceRule,
 			&s.IsException,
 		); err != nil {
@@ -130,9 +123,10 @@ func (r *PostgresScheduleDAO) GetRecurringSchedulesByDevice(ctx context.Context,
 		}
 		schedules = append(schedules, s)
 	}
-
+	log.Printf("Retrieved %d schedules for device %s", len(schedules), deviceID)
+	log.Printf("Schedules: %+v", schedules)
 	if err := rows.Err(); err != nil {
-		log.Printf("Error iterating over rows: %v", err)
+		log.Printf("Error iterating recurring schedule rows: %v", err)
 		return nil, err
 	}
 
@@ -143,7 +137,7 @@ func (r *PostgresScheduleDAO) GetRecurringSchedulesByDevice(ctx context.Context,
 func (r *PostgresScheduleDAO) UpdateRecurringSchedule(ctx context.Context, scheduleID int, schedule models.RecurringSchedule) error {
 	query := `
         UPDATE public.recurring_schedules
-        SET device_id = $2, schedule_name = $3, start_time = $4, end_time = $5, start_date = $6, end_date = $7, recurrence_rule = $8
+        SET device_id = $2, schedule_name = $3, start_time = $4, end_time = $5, recurrence_rule = $6
         WHERE recurring_schedule_id = $1
     `
 	result, err := r.db.ExecContext(
@@ -154,8 +148,6 @@ func (r *PostgresScheduleDAO) UpdateRecurringSchedule(ctx context.Context, sched
 		schedule.ScheduleName,
 		schedule.StartTime,
 		schedule.EndTime,
-		schedule.StartDate,
-		schedule.EndDate,
 		schedule.RecurrenceRule,
 	)
 	if err != nil {

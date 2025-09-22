@@ -20,6 +20,9 @@ type Device struct {
 	LastSeen  time.Time `json:"last_seen" db:"last_seen"`
 	Status    string    `json:"status" db:"status"`
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	Current   *float64  `json:"current,omitempty" db:"current"`
+	Voltage   *float64  `json:"voltage,omitempty" db:"voltage"`
+	Power     *float64  `json:"power,omitempty" db:"power"`
 }
 
 // Component represents the component type data.
@@ -63,7 +66,7 @@ type ComponentLog struct {
 // DeviceLocation represents the link between a device and a location.
 type DeviceLocation struct {
 	DeviceID   string    `json:"device_id" db:"device_id"`
-	LocationID int       `json:"location_id" db:"location_id"`
+	locationID int       `json:"location_id" db:"location_id"`
 	AssignedAt time.Time `json:"assigned_at" db:"assigned_at"`
 	IsCurrent  bool      `json:"is_current" db:"is_current"`
 }
