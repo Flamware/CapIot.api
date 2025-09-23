@@ -16,8 +16,8 @@ node "Client" {
   component "FrontEnd (Web/Mobile)" as FE
 }
 
-cloud "Auth0" as Auth0 {
-
+node "Auth Service" as AuthS {
+    database "User Database" as UserDB
 }
 
 node "Google VPS" {
@@ -37,53 +37,50 @@ node "STM32 Fleet" {
 }
 
 ' Relationships
-FE --> API_Backend : "Token get/send"
-FE --> API_InfluxDB : "Token send"
+FE --> API_Backend : "Login/Token get"
+FE --> API_InfluxDB : "Authenticated Requests"
 
-STM32 -> MQTT_Broker : "Publish (User/Pass + SSL?)"
-STM32 -> API_InfluxDB
+STM32 --> API_InfluxDB : "Provisioning Request"
+STM32 --> MQTT_Broker : "Pub/Sub (User/Pass + SSL)"
+STM32 --> API_InfluxDB : "Sensor/Metrics Data"
 
-API_Backend --> Auth0 : "Token Verif."
+API_Backend --> AuthS : "User/Device Token Verif."
 API_Backend --> PostgreSQL : "Data Storage"
-
-API_InfluxDB --> InfluxDB : "Time-Series"
-
 API_Backend --> MQTT_Broker : "Pub/Sub"
+
+API_InfluxDB --> API_Backend : "Token Provisioning\n & Validation"
+API_InfluxDB --> InfluxDB : "Time-Series"
 
 ' Notes
 note right of API_Backend
-  1. Auth0 Integration
-  2. Token Mgmt/Verif.
-  3. Device Config.
-  4. Data Persist.
+  1. Auth Service Integration
+  2. **Device Provisioning\n& Token Mgmt (via API InfluxDB)**
+  3. Device Config/Commands
+  4. Data Persist. (User/Site)
 end note
 
 note right of API_InfluxDB
-  1. Token Verif.
-  2. TPM2.0 Signature Decode
+  1. **Handles Provisioning & Token Validation**
+  2. Data Ingestion
 end note
 
 note right of STM32
-  1. Auth0 JWT Request
-  2. TPM2.0 Signed Payload
+  1. **Request Provisioning Token\nfrom API InfluxDB**
+  2. Data Publish (HTTP/MQTT)
 end note
 
-note left of API_Backend
-  1. Device Discovery
-  2. Config Range Update
-end note
-
-note right of MQTT_Broker
-  1. Pub/Sub Broker
-  2. Device Decoupling
-  3. User/Pass (+ SSL?)
+note left of FE
+  1. Login to API Backend
+  2. Get Auth Token
+  3. Use Token for all API calls
 end note
 
 note bottom of PostgreSQL
   User/Site Data
+  Device/Location Config
 end note
 
 note bottom of InfluxDB
-  Time-Series Data
+  Sensor & Metrics Data
 end note
 @enduml
