@@ -83,6 +83,12 @@ func (h *DeviceHandler) DeleteDevice(writer http.ResponseWriter, request *http.R
 		utils.RespondWithError(writer, apiErr)
 		return
 	}
+	// Delete the device from mqtt
+	if err := h.mqttHandler.PurgeDeviceFromMqtt(deviceID); err != nil {
+		log.Printf("Failed to purge device '%s' from MQTT: %v", deviceID, err)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Failed to purge device from MQTT", map[string]string{"error": err.Error(), "deviceID": deviceID}, http.StatusInternalServerError)
+		utils.RespondWithError(writer, apiErr)
+	}
 
 	// Commit the transaction only if all operations were successful
 	if err := tx.Commit(); err != nil {
@@ -638,6 +644,7 @@ func (h *DeviceHandler) ProvisionDevice(writer http.ResponseWriter, request *htt
 		utils.RespondWithError(writer, apiErr)
 		return
 	}
+
 	if device == nil {
 		log.Printf("ProvisioningDeviceMiddleware: Device %s not found", deviceID)
 		apiErr := models.NewAPIError(models.ErrorCodeNotFound, "Device not found", nil, http.StatusNotFound)

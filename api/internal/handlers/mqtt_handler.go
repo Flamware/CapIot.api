@@ -64,6 +64,37 @@ type ConsumptionPayload struct {
 	Power    float64 `json:"power"`
 }
 
+func (h *MqttHandler) PurgeDeviceFromMqtt(deviceID string) error {
+	topicsToPurge := []string{
+		fmt.Sprintf("devices/available/%s", deviceID),
+		fmt.Sprintf("devices/status/%s", deviceID),
+		fmt.Sprintf("devices/alert/%s", deviceID),
+		fmt.Sprintf("devices/running_hours/%s", deviceID),
+		fmt.Sprintf("devices/consumption/%s", deviceID),
+	}
+
+	var err error
+	for _, topic := range topicsToPurge {
+		log.Printf("Purging retained message for device '%s' on topic '%s'.", deviceID, topic)
+
+		// Publish a zero-byte payload with the RETAIN flag set to true
+		token := h.mqttClient.Publish(topic, 0, true, []byte{})
+		token.Wait()
+
+		if token.Error() != nil {
+			log.Printf("MQTT publish error while purging topic '%s': %v", topic, token.Error())
+			// Collect the first error but continue to try to purge other topics
+			if err == nil {
+				err = fmt.Errorf("failed to purge topic '%s': %w", topic, token.Error())
+			}
+		} else {
+			log.Printf("Successfully purged retained MQTT message for device '%s' on topic '%s'.", deviceID, topic)
+		}
+	}
+
+	return err // Return the first error encountered, or nil if all succeeded
+}
+
 // HandleDeviceAvailability gère le message de disponibilité de l'appareil et effectue le provisionnement
 func (h *MqttHandler) HandleDeviceAvailability(client mqtt.Client, msg mqtt.Message) {
 	var payload AvailabilityPayload
@@ -179,6 +210,24 @@ func (h *MqttHandler) HandleDeviceAvailability(client mqtt.Client, msg mqtt.Mess
 		}
 	}
 	log.Printf("Device '%s' availability processed successfully.", deviceID)
+	// publish to topic devices/registered/<deviceID>
+	topic := "devices/registered/" + deviceID
+	registeredPayload := map[string]interface{}{
+		"device_id": deviceID,
+		"status":    "registered",
+	}
+	payloadBytes, err := json.Marshal(registeredPayload)
+	if err != nil {
+		log.Printf("Error marshalling registered payload: %v", err)
+		return
+	}
+	token := h.mqttClient.Publish(topic, 0, false, payloadBytes)
+	token.Wait()
+	if token.Error() != nil {
+		log.Printf("MQTT publish error for registered topic: %v", token.Error())
+		return
+	}
+	log.Printf("MQTT message published to %s: %s", topic, payloadBytes)
 }
 
 // HandleDeviceStatus handles status updates sent by the device itself

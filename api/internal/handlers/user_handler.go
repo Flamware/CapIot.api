@@ -5,6 +5,7 @@ import (
 	"CapIot-api/internal/config"
 	"CapIot-api/internal/models"
 	"CapIot-api/internal/service"
+	"CapIot-api/internal/utils"
 	"encoding/json"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/gorilla/mux"
@@ -26,16 +27,16 @@ func NewUserHandler(userService *service.DefaultUserService) *UserHandler {
 func (h *UserHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 	userClaims, ok := r.Context().Value(config.UserClaimsContextKey).(jwt.MapClaims)
 	if !ok {
-		log.Println("GetCurrentUser: Invalid user claims type in context")
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Failed to retrieve user claims", nil, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 	log.Printf("GetCurrentUser: Retrieved claims from context: %+v", userClaims)
 
 	userIDFloat, ok := userClaims["id"].(float64)
 	if !ok {
-		log.Println("GetCurrentUser: Invalid user ID type in claims")
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Invalid user ID in claims", nil, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 	userID := int(userIDFloat) // Convert float64 to int
@@ -43,15 +44,15 @@ func (h *UserHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 
 	user, err := h.userService.GetUserByID(r.Context(), userID)
 	if err != nil {
-		log.Printf("GetCurrentUser: Failed to get user with ID %d: %v", userID, err)
-		http.Error(w, "Failed to get user", http.StatusInternalServerError)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Failed to get user", nil, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(user); err != nil {
-		log.Printf("GetCurrentUser: Failed to encode user to JSON: %v", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error encoding response", nil, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 	log.Println("GetCurrentUser: Successfully returned current user")
@@ -60,12 +61,14 @@ func (h *UserHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 func (h *UserHandler) UpdateCurrentUser(w http.ResponseWriter, r *http.Request) {
 	userClaims, ok := r.Context().Value(config.UserClaimsContextKey).(jwt.MapClaims)
 	if !ok {
-		http.Error(w, "Invalid user claims", http.StatusInternalServerError)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Failed to retrieve user claims", nil, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 	userIDFloat, ok := userClaims["id"].(float64)
 	if !ok {
-		http.Error(w, "Invalid user ID", http.StatusInternalServerError)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Invalid user ID in claims", nil, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 	userID := int(userIDFloat)
@@ -74,26 +77,30 @@ func (h *UserHandler) UpdateCurrentUser(w http.ResponseWriter, r *http.Request) 
 		Name *string `json:"name"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Invalid request body", nil, http.StatusBadRequest)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 
 	user, err := h.userService.GetUserByID(r.Context(), userID)
 	if err != nil {
-		http.Error(w, "Failed to get user", http.StatusInternalServerError)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Failed to get user", nil, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 
 	user.Name = requestBody.Name
 	updatedUser, err := h.userService.UpdateUser(r.Context(), *user)
 	if err != nil {
-		http.Error(w, "Failed to update user", http.StatusInternalServerError)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Failed to update user", nil, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(updatedUser); err != nil {
-		http.Error(w, "Error encoding response", http.StatusInternalServerError)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error encoding response", nil, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 }
@@ -109,20 +116,23 @@ func (h *UserHandler) AsignUser(w http.ResponseWriter, r *http.Request) {
 		locationID int `json:"locationID"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Invalid request body", nil, http.StatusBadRequest)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 
 	// Convert userID to int
 	userIDInt, err := strconv.Atoi(userIDStr)
 	if err != nil {
-		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Invalid user ID", nil, http.StatusBadRequest)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 
 	// Check if the user ID and location ID are valid (greater than zero)
 	if userIDInt <= 0 || requestBody.locationID <= 0 {
-		http.Error(w, "Invalid user ID or location ID", http.StatusBadRequest)
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Invalid user ID or location ID", nil, http.StatusBadRequest)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 
@@ -130,7 +140,8 @@ func (h *UserHandler) AsignUser(w http.ResponseWriter, r *http.Request) {
 	err = h.userService.AsignUser(r.Context(), userIDInt, requestBody.locationID)
 	if err != nil {
 		log.Printf("Failed to assign user %d to location %d: %v", userIDInt, requestBody.locationID, err)
-		http.Error(w, "Failed to assign user to location", http.StatusInternalServerError)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Failed to assign user to location", nil, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 
@@ -142,12 +153,14 @@ func (h *UserHandler) GetUserLocations(w http.ResponseWriter, r *http.Request) {
 	// Extract the user ID from the JWT claims
 	userClaims, ok := r.Context().Value(config.UserClaimsContextKey).(jwt.MapClaims)
 	if !ok {
-		http.Error(w, "Invalid user claims", http.StatusInternalServerError)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Invalid user claims", nil, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 	userIDFloat, ok := userClaims["id"].(float64)
 	if !ok {
-		http.Error(w, "Invalid user ID", http.StatusInternalServerError)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Invalid user ID", nil, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 	userID := int(userIDFloat)
@@ -155,13 +168,14 @@ func (h *UserHandler) GetUserLocations(w http.ResponseWriter, r *http.Request) {
 	// Call the service to get user locations
 	locations, err := h.userService.GetUserLocations(r.Context(), userID)
 	if err != nil {
-		http.Error(w, "Failed to get user locations", http.StatusInternalServerError)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Failed to get user locations", nil, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(locations); err != nil {
-		log.Printf("GetUserLocations: Failed to encode locations to JSON: %v", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error encoding response", nil, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 	log.Println("GetUserLocations: Successfully returned user locations")
@@ -179,28 +193,31 @@ func (h *UserHandler) UpdateUserAndLocation(w http.ResponseWriter, r *http.Reque
 		Name     string `json:"name"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Invalid request body", nil, http.StatusBadRequest)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 
 	// Convert userID to int
 	userIDInt, err := strconv.Atoi(userIDStr)
 	if err != nil {
-		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Invalid user ID", nil, http.StatusBadRequest)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 
 	// Check if the user ID and location ID are valid (greater than zero)
 	if userIDInt <= 0 {
-		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Invalid user ID", nil, http.StatusBadRequest)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 
 	// Call the service to assign the user to the location using the integer IDs
 	err = h.userService.UpdateUserSites(r.Context(), userIDInt, requestBody.SitesIDs, requestBody.Name)
 	if err != nil {
-		log.Printf("Failed to update user %d to location %d: %v", userIDInt, requestBody.SitesIDs, err)
-		http.Error(w, "Failed to update user to location", http.StatusInternalServerError)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Failed to update user and locations", nil, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 
@@ -215,27 +232,31 @@ func (h *UserHandler) GetUserSites(writer http.ResponseWriter, request *http.Req
 	// Convert userID to int
 	userIDInt, err := strconv.Atoi(userIDStr)
 	if err != nil {
-		http.Error(writer, "Invalid user ID", http.StatusBadRequest)
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Invalid user ID", nil, http.StatusBadRequest)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 
 	// Check if the user ID is valid (greater than zero)
 	if userIDInt <= 0 {
-		http.Error(writer, "Invalid user ID", http.StatusBadRequest)
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Invalid user ID", nil, http.StatusBadRequest)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 
 	sites, err := h.userService.GetUserSites(request.Context(), userIDInt)
 	if err != nil {
-		http.Error(writer, "Failed to get user sites", http.StatusInternalServerError)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Failed to get user sites", nil, http.StatusInternalServerError)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 
 	writer.Header().Set("Content-Type", "application/json")
 	writer.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(writer).Encode(sites); err != nil {
-		log.Printf("Failed to encode response: %v", err)
-		http.Error(writer, "Failed to send response", http.StatusInternalServerError)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error encoding response", nil, http.StatusInternalServerError)
+		utils.RespondWithError(writer, apiErr)
+		return
 	}
 }
 
@@ -265,46 +286,52 @@ func (h *UserHandler) GetUsers(writer http.ResponseWriter, request *http.Request
 	// Call AuthService to get all users
 	users, err := h.userService.GetUsers(request.Context(), page, limit, searchTerm)
 	if err != nil {
-		log.Printf("Failed to get all users: %v", err)
-		http.Error(writer, "Failed to retrieve data", http.StatusInternalServerError)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Failed to get users", nil, http.StatusInternalServerError)
+		utils.RespondWithError(writer, apiErr)
 		return
 	}
 
 	writer.Header().Set("Content-Type", "application/json")
 	writer.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(writer).Encode(users); err != nil {
-		log.Printf("Failed to encode response: %v", err)
-		http.Error(writer, "Failed to send response", http.StatusInternalServerError)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error encoding response", nil, http.StatusInternalServerError)
+		utils.RespondWithError(writer, apiErr)
+		return
 	}
 }
 
 func (h *UserHandler) GetMySites(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 	// Extract the user ID from the JWT claims
 	userClaims, ok := r.Context().Value(config.UserClaimsContextKey).(jwt.MapClaims)
 	if !ok {
-		http.Error(w, "Invalid user claims", http.StatusInternalServerError)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Invalid user claims", nil, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 	userIDFloat, ok := userClaims["id"].(float64)
 	if !ok {
-		http.Error(w, "Invalid user ID", http.StatusInternalServerError)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Invalid user ID", nil, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 	userID := int(userIDFloat)
 
 	sites, err := h.userService.GetUserSites(r.Context(), userID)
 	if err != nil {
-		http.Error(w, "Error getting sites", http.StatusInternalServerError)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Failed to get user sites", nil, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(sites); err != nil {
-		http.Error(w, "Error encoding response", http.StatusInternalServerError)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error encoding response", nil, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 }
@@ -313,7 +340,8 @@ func (h *UserHandler) ChangeUsername(w http.ResponseWriter, r *http.Request) {
 	// Extract the user ID from the URL parameters
 	userClaims, ok := r.Context().Value(config.UserClaimsContextKey).(jwt.MapClaims)
 	if !ok {
-		http.Error(w, "Invalid user claims", http.StatusInternalServerError)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Invalid user claims", nil, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 	userIDFloat, ok := userClaims["id"].(float64)
@@ -322,7 +350,7 @@ func (h *UserHandler) ChangeUsername(w http.ResponseWriter, r *http.Request) {
 			Code:    models.ErrorCodeInternalServerError,
 			Message: "Invalid user ID",
 		}
-		http.Error(w, apiError.Message, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiError)
 		return
 	}
 	userID := int(userIDFloat)
@@ -334,7 +362,7 @@ func (h *UserHandler) ChangeUsername(w http.ResponseWriter, r *http.Request) {
 			Code:    models.ErrorCodeBadRequest,
 			Message: "Invalid request body",
 		}
-		http.Error(w, apiError.Message, http.StatusBadRequest)
+		utils.RespondWithError(w, apiError)
 		return
 	}
 	if requestBody.Name == "" {
@@ -342,7 +370,7 @@ func (h *UserHandler) ChangeUsername(w http.ResponseWriter, r *http.Request) {
 			Code:    models.ErrorCodeBadRequest,
 			Message: "Name cannot be empty",
 		}
-		http.Error(w, apiError.Message, http.StatusBadRequest)
+		utils.RespondWithError(w, apiError)
 		return
 	}
 	user := models.User{
@@ -355,7 +383,7 @@ func (h *UserHandler) ChangeUsername(w http.ResponseWriter, r *http.Request) {
 			Code:    models.ErrorCodeInternalServerError,
 			Message: "Failed to update user",
 		}
-		http.Error(w, apiError.Message, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -364,7 +392,7 @@ func (h *UserHandler) ChangeUsername(w http.ResponseWriter, r *http.Request) {
 			Code:    models.ErrorCodeInternalServerError,
 			Message: "Error encoding response",
 		}
-		http.Error(w, apiError.Message, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiError)
 		return
 	}
 }

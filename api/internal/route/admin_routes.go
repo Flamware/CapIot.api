@@ -42,7 +42,6 @@ func SetupAdminRoutes(r *mux.Router,
 	// --- Site Routes (admin only) ---
 	adminRouter.HandleFunc("/site/create", locationHandler.CreateSite).Methods(http.MethodPost)
 	adminRouter.HandleFunc("/site/{siteID}", locationHandler.DeleteSite).Methods(http.MethodDelete)
-
 	// Site Routes
 	apiRouter.Handle("/sites",
 		middleware.RoleCheckMiddleware(authService, []string{"admin", "operateur"})(http.HandlerFunc(locationHandler.GetSitesWithPagination)),
@@ -81,7 +80,7 @@ func SetupAdminRoutes(r *mux.Router,
 	).Methods(http.MethodGet)
 
 	// MQTT & Device Status Routes
-	apiRouter.Handle("/devices/{deviceID}/comand",
+	apiRouter.Handle("/devices/{deviceID}/command",
 		middleware.RoleCheckMiddleware(authService, []string{"admin", "operateur"})(http.HandlerFunc(mqttHandler.HandleCommandDevice)),
 	).Methods(http.MethodPatch)
 }

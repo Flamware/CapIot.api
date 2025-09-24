@@ -4,7 +4,7 @@ import (
 	"CapIot-api/internal/auth"
 	"CapIot-api/internal/config"
 	"CapIot-api/internal/handlers"
-	"CapIot-api/internal/models" // Import the models package
+	"CapIot-api/internal/models"
 	"CapIot-api/internal/service"
 	"CapIot-api/internal/utils"
 	"context"
@@ -16,10 +16,9 @@ import (
 	"strings"
 )
 
-// JWTAuthMiddleware verifies the JWT and adds the user ID to the context.
+// JWTAuthMiddleware verifies the JWT and adds the user ID and roles to the context.
 func JWTAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
 			log.Println("JWTAuthMiddleware: Authorization header missing")
@@ -44,10 +43,21 @@ func JWTAuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// Store the entire claims map in the request context
 		ctx := context.WithValue(r.Context(), config.UserClaimsContextKey, claims)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// hasAdminRole checks if the user has the "admin" role.
+func hasAdminRole(claims jwt.MapClaims) bool {
+	if roles, ok := claims["role"].([]interface{}); ok {
+		for _, role := range roles {
+			if r, ok := role.(string); ok && r == "admin" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // RoleCheckMiddleware checks if the authenticated user has at least one of the required roles.
@@ -56,20 +66,17 @@ func RoleCheckMiddleware(authService service.AuthService, requiredRoles []string
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			log.Printf("RoleCheckMiddleware: Checking required roles %v", requiredRoles)
 
-			// Retrieve the Auth0 User ID from the context
-			auth0UserID := r.Context().Value(config.UserClaimsContextKey)
-			if auth0UserID == nil {
-				log.Println("RoleCheckMiddleware: Auth0 User ID not found in context. Authentication likely failed.")
+			claims, ok := r.Context().Value(config.UserClaimsContextKey).(jwt.MapClaims)
+			if !ok {
+				log.Println("RoleCheckMiddleware: Claims not found or invalid in context.")
 				apiErr := models.NewAPIError(models.ErrorCodeUnauthorized, "Unauthorized", nil, http.StatusUnauthorized)
 				utils.RespondWithError(w, apiErr)
 				return
 			}
-
-			claims, ok := auth0UserID.(jwt.MapClaims)
-			if !ok {
-				log.Printf("RoleCheckMiddleware: Invalid Auth0 claims type in context: %T, expected jwt.MapClaims", auth0UserID)
-				apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Internal Server Error", nil, http.StatusInternalServerError)
-				utils.RespondWithError(w, apiErr)
+			// Allow if the user is an admin
+			if hasAdminRole(claims) {
+				log.Println("RoleCheckMiddleware: User is an admin. Proceeding.")
+				next.ServeHTTP(w, r)
 				return
 			}
 
@@ -82,7 +89,6 @@ func RoleCheckMiddleware(authService service.AuthService, requiredRoles []string
 			}
 			log.Printf("RoleCheckMiddleware: Auth0 User ID found in context: %s", auth0ID)
 
-			// Use the Auth0 User ID to retrieve roles
 			userRoles, err := authService.GetUserRoles(r.Context(), auth0ID)
 			if err != nil {
 				log.Printf("RoleCheckMiddleware: Failed to retrieve roles for Auth0 User ID %s: %v", auth0ID, err)
@@ -92,7 +98,6 @@ func RoleCheckMiddleware(authService service.AuthService, requiredRoles []string
 			}
 			log.Printf("RoleCheckMiddleware: Retrieved roles for Auth0 User ID %s: %v", auth0ID, userRoles)
 
-			// Check if the user's roles contain at least one of the required roles
 			hasRequiredRole := false
 			for _, requiredRole := range requiredRoles {
 				for _, userRole := range userRoles {
@@ -115,7 +120,6 @@ func RoleCheckMiddleware(authService service.AuthService, requiredRoles []string
 
 			log.Printf("RoleCheckMiddleware: Auth0 User ID %s has one of the required roles. Proceeding.", auth0ID)
 
-			// Optionally, you can add the roles to the context for later use in handlers
 			ctx := context.WithValue(r.Context(), config.RoleContextKey, userRoles)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
@@ -126,17 +130,20 @@ func RoleCheckMiddleware(authService service.AuthService, requiredRoles []string
 func CheckLocationAccess(locationHandler *handlers.LocationHandler) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Retrieve claims from the context
-			// Extract user ID from JWT claims
 			userClaims, ok := r.Context().Value(config.UserClaimsContextKey).(jwt.MapClaims)
 			if !ok {
 				apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Invalid user claims", nil, http.StatusInternalServerError)
 				utils.RespondWithError(w, apiErr)
 				return
 			}
-			userID, ok := userClaims["id"].(float64)
+			// Allow if the user is an admin
+			if hasAdminRole(userClaims) {
+				log.Println("CheckLocationAccess: User is an admin. Proceeding.")
+				next.ServeHTTP(w, r)
+				return
+			}
 
-			// convert float64 to int
+			userID, ok := userClaims["id"].(float64)
 			userIDInt := int(userID)
 
 			if !ok {
@@ -144,6 +151,7 @@ func CheckLocationAccess(locationHandler *handlers.LocationHandler) func(http.Ha
 				utils.RespondWithError(w, apiErr)
 				return
 			}
+
 			vars := mux.Vars(r)
 			locationIDStr := vars["locationID"]
 			if locationIDStr == "" {
@@ -164,16 +172,15 @@ func CheckLocationAccess(locationHandler *handlers.LocationHandler) func(http.Ha
 				return
 			}
 
-			// Check if the user has access to the location's site
 			hasAccess, err := locationHandler.CheckLocationAccess(userIDInt, locationID)
 			if err != nil {
-				log.Printf("CheckLocationAccess: Error checking access for Auth0 User ID %s to location %s: %v", userIDInt, locationID, err)
+				log.Printf("CheckLocationAccess: Error checking access for User ID %d to location %d: %v", userIDInt, locationID, err)
 				apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error checking access permissions", nil, http.StatusInternalServerError)
 				utils.RespondWithError(w, apiErr)
 				return
 			}
 			if !hasAccess {
-				log.Printf("CheckLocationAccess: Auth0 User ID %s does not have access to location %s", userIDInt, locationID)
+				log.Printf("CheckLocationAccess: User ID %d does not have access to location %d", userIDInt, locationID)
 				apiErr := models.NewAPIError(models.ErrorCodeInsufficientPermissions, "Insufficient permissions for this location", nil, http.StatusForbidden)
 				utils.RespondWithError(w, apiErr)
 				return
@@ -182,20 +189,25 @@ func CheckLocationAccess(locationHandler *handlers.LocationHandler) func(http.Ha
 		})
 	}
 }
+
+// CheckDeviceAccess checks if the user has access to a specific device.
 func CheckDeviceAccess(deviceHandler *handlers.DeviceHandler) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Retrieve claims from the context
-			// Extract user ID from JWT claims
 			userClaims, ok := r.Context().Value(config.UserClaimsContextKey).(jwt.MapClaims)
 			if !ok {
 				apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Invalid user claims", nil, http.StatusInternalServerError)
 				utils.RespondWithError(w, apiErr)
 				return
 			}
-			userID, ok := userClaims["id"].(float64)
+			// Allow if the user is an admin
+			if hasAdminRole(userClaims) {
+				log.Println("CheckDeviceAccess: User is an admin. Proceeding.")
+				next.ServeHTTP(w, r)
+				return
+			}
 
-			// convert float64 to int
+			userID, ok := userClaims["id"].(float64)
 			userIDInt := int(userID)
 
 			if !ok {
@@ -203,10 +215,11 @@ func CheckDeviceAccess(deviceHandler *handlers.DeviceHandler) func(http.Handler)
 				utils.RespondWithError(w, apiErr)
 				return
 			}
+
 			vars := mux.Vars(r)
 			deviceID := vars["deviceID"]
 			if deviceID == "" {
-				log.Println("checkDeviceAccess: 'deviceID' parameter missing in URL.")
+				log.Println("CheckDeviceAccess: 'deviceID' parameter missing in URL.")
 				apiErr := models.NewAPIError(
 					models.ErrorCodeMissingParameter,
 					"deviceID parameter missing",
@@ -216,27 +229,27 @@ func CheckDeviceAccess(deviceHandler *handlers.DeviceHandler) func(http.Handler)
 				return
 			}
 
-			// Check if the user has access to the location's site
 			hasAccess := deviceHandler.CheckDeviceAccess(userIDInt, deviceID)
 			if !hasAccess {
-				log.Printf("checkDeviceAccess: Auth0 User ID %s does not have access to device %s", userIDInt, deviceID)
+				log.Printf("CheckDeviceAccess: User ID %d does not have access to device %s", userIDInt, deviceID)
 				apiErr := models.NewAPIError(models.ErrorCodeInsufficientPermissions, "Insufficient permissions for this device", nil, http.StatusForbidden)
 				utils.RespondWithError(w, apiErr)
 				return
 			}
-			log.Printf("checkDeviceAccess: User %s has access to device %s. Proceeding.", userIDInt, deviceID)
+			log.Printf("CheckDeviceAccess: User %d has access to device %s. Proceeding.", userIDInt, deviceID)
 			next.ServeHTTP(w, r)
 		})
 	}
 }
 
+// CheckDeviceRights checks if a device token has access to a specific device.
 func CheckDeviceRights(handler *handlers.DeviceHandler) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Retrieve the deviceID from the URL path, as that's how it's defined in the route.
+			// This middleware is for device-to-device/gateway communication, not user access.
+			// It doesn't need to check for the admin role from user claims.
 			vars := mux.Vars(r)
 			deviceID := vars["deviceID"]
-			log.Printf("CheckDeviceRights: URL Vars: %+v")
 			if deviceID == "" {
 				log.Println("CheckDeviceRights: 'deviceID' parameter missing in URL.")
 				apiErr := models.NewAPIError(
@@ -247,10 +260,8 @@ func CheckDeviceRights(handler *handlers.DeviceHandler) func(http.Handler) http.
 				utils.RespondWithError(w, apiErr)
 				return
 			}
-			// print the token for debugging purposes
-			// Check the token provided in the Authorization header
+
 			tokenHeader := r.Header.Get("Authorization")
-			// Parse the token to ensure it's valid
 			token := strings.TrimPrefix(tokenHeader, "Bearer ")
 			if token == tokenHeader {
 				log.Printf("CheckDeviceRights: Invalid token format, missing 'Bearer ': %s", tokenHeader)
@@ -258,9 +269,11 @@ func CheckDeviceRights(handler *handlers.DeviceHandler) func(http.Handler) http.
 				utils.RespondWithError(w, apiErr)
 				return
 			}
-			allowed := handler.CheckDeviceRights(token, deviceID) // Assuming this function exists on your handler
+
+			allowed := handler.CheckDeviceRights(token, deviceID)
 			if !allowed {
-				http.Error(w, "Access denied for device", http.StatusForbidden)
+				apiError := models.NewAPIError(models.ErrorCodeForbidden, "Access denied for device", nil, http.StatusForbidden)
+				utils.RespondWithError(w, apiError)
 				return
 			}
 
@@ -269,11 +282,10 @@ func CheckDeviceRights(handler *handlers.DeviceHandler) func(http.Handler) http.
 	}
 }
 
+// CheckDeviceLocationRights checks if a device token has access to a device and if it belongs to a location.
 func CheckDeviceLocationRights(handler *handlers.DeviceHandler) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Retrieve the deviceID and locationID from the URL path.
-			log.Printf("CheckDeviceLocationRights: Middleware initialized with handler: %v", handler)
 			vars := mux.Vars(r)
 			deviceID := vars["deviceID"]
 			if deviceID == "" {
@@ -284,7 +296,7 @@ func CheckDeviceLocationRights(handler *handlers.DeviceHandler) func(http.Handle
 					nil,
 					http.StatusBadRequest)
 				utils.RespondWithError(w, apiErr)
-				return
+				return // Add return here
 			}
 			locationID := vars["locationID"]
 			if locationID == "" {
@@ -295,28 +307,170 @@ func CheckDeviceLocationRights(handler *handlers.DeviceHandler) func(http.Handle
 					nil,
 					http.StatusBadRequest)
 				utils.RespondWithError(w, apiErr)
-				return
+				return // Add return here
 			}
 
-			// Check the token provided in the Authorization header.
 			tokenHeader := r.Header.Get("Authorization")
-
-			// Check the token's correctness.
-			allowed := handler.CheckDeviceRights(tokenHeader, deviceID)
-			if !allowed {
-				http.Error(w, "Access denied for device", http.StatusForbidden)
-				return
+			token := strings.TrimPrefix(tokenHeader, "Bearer ")
+			if token == tokenHeader {
+				log.Printf("CheckDeviceLocationRights: Invalid token format, missing 'Bearer ': %s", tokenHeader)
+				apiErr := models.NewAPIError(models.ErrorCodeInvalidToken, "Invalid token format, missing 'Bearer '", nil, http.StatusUnauthorized)
+				utils.RespondWithError(w, apiErr)
+				return // Add return here
 			}
 
-			// Check if the device belongs to the location.
+			allowed := handler.CheckDeviceRights(token, deviceID)
+			if !allowed {
+				apiError := models.NewAPIError(models.ErrorCodeForbidden, "Access denied for device", nil, http.StatusForbidden)
+				utils.RespondWithError(w, apiError)
+				return // Add return here
+			}
+
 			allowed = handler.CheckDeviceLocation(deviceID, locationID)
 			if !allowed {
-				http.Error(w, "Device does not belong to the specified location", http.StatusForbidden)
+				apiError := models.NewAPIError(models.ErrorCodeForbidden, "Device does not belong to the specified location", nil, http.StatusForbidden)
+				utils.RespondWithError(w, apiError)
+				return // Add return here
+			}
+
+			log.Printf("CheckDeviceLocationRights: User has rights for device %s and location %s. Proceeding.", deviceID, locationID)
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// CheckSiteAccess checks if the user has access to a specific site.
+func CheckSiteAccess(location *handlers.LocationHandler) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			userClaims, ok := r.Context().Value(config.UserClaimsContextKey).(jwt.MapClaims)
+			if !ok {
+				apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Invalid user claims", nil, http.StatusInternalServerError)
+				utils.RespondWithError(w, apiErr)
+				return
+			}
+			// Allow if the user is an admin
+			if hasAdminRole(userClaims) {
+				log.Println("CheckSiteAccess: User is an admin. Proceeding.")
+				next.ServeHTTP(w, r)
 				return
 			}
 
-			// If all checks pass, proceed to the next handler in the chain.
-			log.Printf("CheckDeviceLocationRights: User has rights for device %s and location %s. Proceeding.", deviceID, locationID)
+			userID, ok := userClaims["id"].(float64)
+			userIDInt := int(userID)
+
+			if !ok {
+				apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Invalid user ID", nil, http.StatusInternalServerError)
+				utils.RespondWithError(w, apiErr)
+				return
+			}
+
+			vars := mux.Vars(r)
+			siteIDStr := vars["siteID"]
+			if siteIDStr == "" {
+				log.Println("CheckSiteAccess: 'siteID' parameter missing in URL.")
+				apiErr := models.NewAPIError(
+					models.ErrorCodeMissingParameter,
+					"siteID parameter missing",
+					nil,
+					http.StatusBadRequest)
+				utils.RespondWithError(w, apiErr)
+				return
+			}
+			siteID, err := strconv.ParseInt(siteIDStr, 10, 64)
+			if err != nil {
+				log.Printf("CheckSiteAccess: Invalid siteID format: %v", err)
+				apiErr := models.NewAPIError(models.ErrorCodeInvalidFormat, "Invalid siteID format", nil, http.StatusBadRequest)
+				utils.RespondWithError(w, apiErr)
+				return
+			}
+
+			hasAccess, err := location.CheckSiteAccess(userIDInt, siteID)
+			if err != nil {
+				log.Printf("CheckSiteAccess: Error checking access for User ID %d to site %d: %v", userIDInt, siteID, err)
+				apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error checking access permissions", nil, http.StatusInternalServerError)
+				utils.RespondWithError(w, apiErr)
+				return
+			}
+			if !hasAccess {
+				log.Printf("CheckSiteAccess: User ID %d does not have access to site %d", userIDInt, siteID)
+				apiErr := models.NewAPIError(models.ErrorCodeInsufficientPermissions, "Insufficient permissions for this site", nil, http.StatusForbidden)
+				utils.RespondWithError(w, apiErr)
+				return
+			}
+			log.Printf("CheckSiteAccess: User %d has access to site %d. Proceeding.", userIDInt, siteID)
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// CheckDeviceLocationRights checks if a device token has access to a device and if it belongs to a location.
+func CheckUserRights(handler *handlers.DeviceHandler) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			userClaims, ok := r.Context().Value(config.UserClaimsContextKey).(jwt.MapClaims)
+			if !ok {
+				log.Printf("CheckUserRights: Claims not found or invalid in context.")
+				apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Invalid user claims", nil, http.StatusInternalServerError)
+				utils.RespondWithError(w, apiErr)
+				return
+			}
+			// Allow if the user is an admin
+			if hasAdminRole(userClaims) {
+				log.Println("CheckLocationAccess: User is an admin. Proceeding.")
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			userID, ok := userClaims["id"].(float64)
+			userIDInt := int(userID)
+			if !ok {
+				apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Invalid user ID", nil, http.StatusInternalServerError)
+				utils.RespondWithError(w, apiErr)
+				return
+			}
+
+			vars := mux.Vars(r)
+			deviceID := vars["deviceID"]
+			if deviceID == "" {
+				log.Println("CheckUserRights: 'deviceID' parameter missing in URL.")
+				apiErr := models.NewAPIError(
+					models.ErrorCodeMissingParameter,
+					"deviceID parameter missing",
+					nil,
+					http.StatusBadRequest)
+				utils.RespondWithError(w, apiErr)
+				return
+			}
+			locationID := vars["locationID"]
+			if locationID == "" {
+				log.Println("CheckUserRights: 'locationID' parameter missing in URL.")
+				apiErr := models.NewAPIError(
+					models.ErrorCodeMissingParameter,
+					"locationID parameter missing",
+					nil,
+					http.StatusBadRequest)
+				utils.RespondWithError(w, apiErr)
+				return
+			}
+
+			hasAccess := handler.CheckDeviceAccess(userIDInt, deviceID)
+			if !hasAccess {
+				log.Printf("CheckUserRights: User ID %d does not have access to device %s", userIDInt, deviceID)
+				apiErr := models.NewAPIError(models.ErrorCodeInsufficientPermissions, "Insufficient permissions for this device", nil, http.StatusForbidden)
+				utils.RespondWithError(w, apiErr)
+				return
+			}
+
+			hasAccess = handler.CheckDeviceLocation(deviceID, locationID)
+			if !hasAccess {
+				log.Printf("CheckUserRights: Device %s does not belong to location %s", deviceID, locationID)
+				apiErr := models.NewAPIError(models.ErrorCodeInsufficientPermissions, "Device does not belong to the specified location", nil, http.StatusForbidden)
+				utils.RespondWithError(w, apiErr)
+				return
+			}
+
+			log.Printf("CheckUserRights: User %d has rights for device %s and location %s. Proceeding.", userIDInt, deviceID, locationID)
 			next.ServeHTTP(w, r)
 		})
 	}

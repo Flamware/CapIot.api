@@ -2,7 +2,9 @@
 package handlers
 
 import (
+	"CapIot-api/internal/models"
 	"CapIot-api/internal/service"
+	"CapIot-api/internal/utils"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -35,8 +37,8 @@ func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method != http.MethodPost {
 		// Log method not allowed error
-		log.Printf("Method %s not allowed for login", r.Method)
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 
@@ -44,17 +46,16 @@ func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	var req LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		// Log decoding error
-		log.Printf("Failed to decode login request: %v", err)
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Invalid request body", nil, http.StatusBadRequest)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 
 	// Call AuthService to authenticate and generate JWT
 	token, err := h.authService.Login(r.Context(), req.Email, req.Password)
 	if err != nil {
-		// Log authentication error
-		log.Printf("Authentication failed for email %s: %v", req.Email, err)
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		apiErr := models.NewAPIError(models.ErrorCodeUnauthorized, "Invalid email or password", nil, http.StatusUnauthorized)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 
@@ -63,9 +64,8 @@ func (h *AuthHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	response := map[string]string{"jwtToken": token}
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		// Log encoding error if the response fails to send
-		log.Printf("Failed to encode response: %v", err)
-		http.Error(w, "Failed to send response", http.StatusInternalServerError)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Failed to send response", nil, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiErr)
 	}
 }
 
@@ -76,8 +76,8 @@ func (h *AuthHandler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method != http.MethodPost {
 		// Log method not allowed error
-		log.Printf("Method %s not allowed for registration", r.Method)
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 
@@ -85,8 +85,8 @@ func (h *AuthHandler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		// Log decoding error
-		log.Printf("Failed to decode registration request: %v", err)
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Invalid request body", nil, http.StatusBadRequest)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 
@@ -94,8 +94,8 @@ func (h *AuthHandler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	err := h.authService.Register(r.Context(), req.Email, req.Password)
 	if err != nil {
 		// Log registration error
-		log.Printf("Registration failed for email %s: %v", req.Email, err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Failed to register user", nil, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiErr)
 		return
 	}
 
@@ -105,7 +105,7 @@ func (h *AuthHandler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	response := map[string]string{"message": "User registered successfully"}
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		// Log encoding error if the response fails to send
-		log.Printf("Failed to encode response: %v", err)
-		http.Error(w, "Failed to send response", http.StatusInternalServerError)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Failed to send response", nil, http.StatusInternalServerError)
+		utils.RespondWithError(w, apiErr)
 	}
 }

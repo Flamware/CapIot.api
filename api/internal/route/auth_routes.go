@@ -9,5 +9,4 @@ import (
 // SetupAuthRoutes initializes the authentication routes using the AuthHandler
 func SetupAuthRoutes(r *mux.Router, authHandler *handlers.AuthHandler) {
 	r.HandleFunc("/api/login", authHandler.LoginHandler).Methods(http.MethodPost)
-	r.HandleFunc("/api/register", authHandler.RegisterHandler).Methods(http.MethodPost)
 }

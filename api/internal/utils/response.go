@@ -17,7 +17,6 @@ func RespondWithError(writer http.ResponseWriter, apiErr models.APIError) {
 	// Encode the entire APIError struct to JSON
 	if err := json.NewEncoder(writer).Encode(apiErr); err != nil {
 		log.Printf("Failed to encode error response: %v", err)
-		// Fallback for a critical encoding error
 		http.Error(writer, "Failed to send error response", http.StatusInternalServerError)
 	}
 }

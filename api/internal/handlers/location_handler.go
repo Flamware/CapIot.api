@@ -9,7 +9,6 @@ import (
 	"log"
 	"net/http"
 	"strconv"
-	"strings"
 )
 
 type LocationHandler struct {
@@ -268,7 +267,7 @@ func (h *LocationHandler) GetSitesWithPagination(w http.ResponseWriter, r *http.
 	utils.RespondWithJSON(w, http.StatusOK, sitesData)
 }
 
-func (h *LocationHandler) GetLocationsBySiteIDs(w http.ResponseWriter, r *http.Request) {
+func (h *LocationHandler) GetLocationsBySiteID(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
 		utils.RespondWithError(w, apiErr)
@@ -277,21 +276,12 @@ func (h *LocationHandler) GetLocationsBySiteIDs(w http.ResponseWriter, r *http.R
 
 	// Read query params
 	query := r.URL.Query()
-	siteIdsParam := query.Get("site_ids")
-	if siteIdsParam == "" {
+	siteID := mux.Vars(r)["siteID"]
+	if siteID == "" {
 		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Missing site_ids query parameter", nil, http.StatusBadRequest)
 		utils.RespondWithError(w, apiErr)
 		return
 	}
-
-	rawIDs := strings.Split(siteIdsParam, ",")
-	var siteIDs []string
-	for _, raw := range rawIDs {
-		if trimmed := strings.TrimSpace(raw); trimmed != "" {
-			siteIDs = append(siteIDs, trimmed)
-		}
-	}
-
 	// Read page & limit for pagination (optional)
 	pageStr := query.Get("page")
 	limitStr := query.Get("limit")
@@ -312,7 +302,7 @@ func (h *LocationHandler) GetLocationsBySiteIDs(w http.ResponseWriter, r *http.R
 	}
 
 	// Call service with validated site IDs + user + pagination + search term
-	locations, err := h.locationService.GetLocationsBySiteIDs(r.Context(), siteIDs, page, limit, term)
+	locations, err := h.locationService.GetLocationsBySiteID(r.Context(), siteID, page, limit, term)
 	if err != nil {
 		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error getting locations", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
 		utils.RespondWithError(w, apiErr)

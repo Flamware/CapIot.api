@@ -9,11 +9,6 @@ import (
 )
 
 func SetupUserRoutes(r *mux.Router, userHandler *handlers.UserHandler) {
-	// Example location endpoint (Consider moving this if it's not user-specific)
-	r.HandleFunc("/api/bind-device/{deviceID}", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("This is a location endpoint"))
-	})
-
 	// Get current user
 	r.Handle("/api/users/me", middleware.JWTAuthMiddleware(http.HandlerFunc(userHandler.GetCurrentUser))).Methods(http.MethodGet)
 

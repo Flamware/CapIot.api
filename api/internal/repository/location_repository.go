@@ -5,10 +5,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/lib/pq"
 	"log"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -484,9 +482,15 @@ func (r *PostgresLocationRepository) CheckUserAccessToSite(userID int, siteID in
 	}
 	return true, nil
 }
-func (r *PostgresLocationRepository) GetLocationsBySiteIDs(ctx context.Context, siteIDs []string, page int, limit int, term string) ([]*models.Location, error) {
+func (r *PostgresLocationRepository) GetLocationsBySiteID(ctx context.Context, siteID string, page int, limit int, term string) ([]*models.Location, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
+
+	// Parse the siteID string to an integer
+	siteIDInt, err := strconv.Atoi(siteID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid siteID: %w", err)
+	}
 
 	if page < 1 {
 		page = 1
@@ -495,24 +499,13 @@ func (r *PostgresLocationRepository) GetLocationsBySiteIDs(ctx context.Context, 
 		limit = 10
 	}
 
-	// Convert siteIDs []string to []int
-	intSiteIDs := make([]int, len(siteIDs))
-	for i, id := range siteIDs {
-		intID, err := strconv.Atoi(strings.TrimSpace(id))
-		if err != nil {
-			log.Printf("Invalid site ID format: %v\n", id)
-			return nil, fmt.Errorf("invalid site ID format: %s", id)
-		}
-		intSiteIDs[i] = intID
-	}
-
 	// Base query
 	query := `
-		SELECT location_id, location_name, location_description, site_id
-		FROM locations
-		WHERE site_id = ANY($1)
-	`
-	args := []interface{}{pq.Array(intSiteIDs)}
+        SELECT location_id, location_name, location_description, site_id
+        FROM locations
+        WHERE site_id = $1
+    `
+	args := []interface{}{siteIDInt} // Use the parsed integer
 	argIndex := 2
 
 	// Add search term if present
@@ -528,7 +521,7 @@ func (r *PostgresLocationRepository) GetLocationsBySiteIDs(ctx context.Context, 
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		log.Printf("Error querying locations by site IDs: %v\n", err)
+		log.Printf("Error querying locations by site ID: %v\n", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -536,7 +529,7 @@ func (r *PostgresLocationRepository) GetLocationsBySiteIDs(ctx context.Context, 
 	var locations []*models.Location
 	for rows.Next() {
 		var loc models.Location
-		var siteID sql.NullInt32
+		var siteID sql.NullInt32 // Changed to NullInt32 for integer site_id
 		if err := rows.Scan(&loc.ID, &loc.Name, &loc.Description, &siteID); err != nil {
 			log.Printf("Error scanning location row: %v\n", err)
 			return nil, err
