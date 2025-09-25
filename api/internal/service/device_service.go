@@ -199,6 +199,7 @@ func (s *DefaultDeviceService) SetDeviceToLocation(ctx context.Context, deviceID
 
 	// Check if location exists
 	location, err := s.deviceDAO.GetLocationByDeviceID(deviceID)
+	log.Printf("Current location for device '%s': %+v", deviceID, *location.ID)
 	if err != nil && err != sql.ErrNoRows {
 		return fmt.Errorf("error checking location for device '%s': %w", deviceID, err)
 	}

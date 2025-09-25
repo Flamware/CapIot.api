@@ -28,7 +28,7 @@ func GenerateCustomJWT(Authresult *models.AuthResult, username string, user_id i
 	if secretKey == "" {
 		return "", fmt.Errorf("secret key not found in environment variables")
 	}
-
+	log.Printf("username: %s, user_id: %d", username, user_id)
 	// Create the JWT claims using the Claims struct
 	claims := Claims{
 		Email:    Authresult.Email,

@@ -21,6 +21,7 @@ type Auth0TokenResponse struct {
 	TokenType    string `json:"token_type"`
 	ExpiresIn    int    `json:"expires_in"`
 	RefreshToken string `json:"refresh_token"`
+	Username     string `json:"username"`
 	Scope        string `json:"scope"`
 }
 type TokenData struct {
@@ -30,7 +31,8 @@ type TokenData struct {
 
 // AuthResult holds the Auth0 authentication result.
 type AuthResult struct {
-	Auth0ID string
-	Email   string
-	Role    []string
+	Auth0ID  string
+	Email    string
+	Role     []string
+	Username string
 }

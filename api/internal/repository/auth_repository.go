@@ -251,11 +251,9 @@ func (r *AuthRepository) AuthenticateWithAuth0(email, password string) (*models.
 	roles, err := r.GetUserRolesByAuth0ID(auth0ID)
 	if err != nil {
 		log.Printf("⚠️ Could not retrieve roles for user %s: %v", auth0ID, err)
-		// Decide if authentication should still succeed with empty roles
 		roles = []string{}
 	}
 
-	log.Printf("✅ Auth0 authenticated user %s with roles: %v", userEmail, roles)
 	return &models.AuthResult{Auth0ID: auth0ID, Email: userEmail, Role: roles}, nil
 }
 
@@ -317,7 +315,6 @@ func extractAuth0IDAndEmail(idToken string) (string, string, error) {
 	if claims, ok := token.Claims.(jwt.MapClaims); ok {
 		auth0ID, _ := claims["sub"].(string)
 		email, _ := claims["email"].(string)
-
 		if auth0ID == "" || email == "" {
 			return "", "", fmt.Errorf("missing sub or email in token")
 		}

@@ -165,23 +165,51 @@ func (d *PostgresDeviceDAO) UnassignDeviceFromLocation(tx *sql.Tx, id string) er
 
 // SetDeviceToLocation assigns a device to a location within a transaction.
 func (d *PostgresDeviceDAO) SetDeviceToLocation(ctx context.Context, deviceID string, locationID int) error {
-	// Use the main database connection
-	executor := d.db
-
-	// We use a CTE (Common Table Expression) to ensure this is an atomic operation.
-	query := `
-		WITH old_location AS (
-			UPDATE public.device_location
-			SET is_current = FALSE
-			WHERE device_id = $1 AND is_current = TRUE
-		)
-		INSERT INTO public.device_location (device_id, location_id, assigned_at, is_current)
-		VALUES ($1, $2, NOW(), TRUE)
-	`
-
-	_, err := executor.ExecContext(ctx, query, deviceID, locationID)
+	// Start a transaction.
+	tx, err := d.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("failed to set device %s to location %d: %w", deviceID, locationID, err)
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	// Defer a rollback in case of an error.
+	defer tx.Rollback()
+
+	// --- Use a lock to prevent a race condition ---
+	// A SELECT FOR UPDATE locks the row(s) to be modified, preventing other
+	// transactions from making changes until this one is complete.
+	lockQuery := `
+        SELECT device_id FROM public.device_location
+        WHERE device_id = $1 AND is_current = TRUE
+        FOR UPDATE
+    `
+	var existingDeviceID string
+	err = tx.QueryRowContext(ctx, lockQuery, deviceID).Scan(&existingDeviceID)
+	if err != nil && err != sql.ErrNoRows {
+		return fmt.Errorf("failed to lock device_location row: %w", err)
+	}
+
+	// Now that we have the lock, proceed with the atomic operations.
+	// 1. Mark the old location as not current.
+	updateQuery := `
+        UPDATE public.device_location
+        SET is_current = FALSE
+        WHERE device_id = $1 AND is_current = TRUE
+    `
+	if _, err := tx.ExecContext(ctx, updateQuery, deviceID); err != nil {
+		return fmt.Errorf("failed to update old location: %w", err)
+	}
+
+	// 2. Insert the new location.
+	insertQuery := `
+        INSERT INTO public.device_location (device_id, location_id, assigned_at, is_current)
+        VALUES ($1, $2, NOW(), TRUE)
+    `
+	if _, err := tx.ExecContext(ctx, insertQuery, deviceID, locationID); err != nil {
+		return fmt.Errorf("failed to insert new location: %w", err)
+	}
+
+	// Commit the transaction. If this fails, the deferred rollback is called.
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return nil

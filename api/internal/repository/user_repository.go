@@ -19,30 +19,51 @@ func NewPostgresUserRepository(db *sql.DB) dao.UserDAO {
 }
 
 // CreateUser inserts a user with the Auth0 ID and email into the database and returns the user ID.
-func (r *PostgresUserRepository) CreateUser(ctx context.Context, auth0ID string, auth0_email string) (int, error) {
+func (r *PostgresUserRepository) CreateUser(ctx context.Context, auth0ID string, auth0_email string) (models.User, error) {
 	var userID int
 	query := `INSERT INTO users (auth0_id, email) VALUES ($1, $2) RETURNING id`
 	err := r.db.QueryRowContext(ctx, query, auth0ID, auth0_email).Scan(&userID)
 	if err != nil {
 		log.Printf("Error inserting user into database: %v\n", err)
-		return 0, err
+		return models.User{}, err
 	}
-	log.Printf("User with Auth0 ID %s inserted into database with ID %d.\n", auth0ID, userID)
-	return userID, nil
+	log.Printf("User with Auth0 ID %s created with ID %d.\n", auth0ID, userID)
+	return models.User{
+		ID:    userID,
+		Email: auth0_email,
+	}, nil
 }
 
 // UserExists checks if a user exists in the database.
-func (r *PostgresUserRepository) UserExists(ctx context.Context, auth0_id string) (int, error) {
-	const query = `SELECT id FROM users WHERE auth0_id = $1 LIMIT 1`
-	var userID int
-	err := r.db.QueryRowContext(ctx, query, auth0_id).Scan(&userID)
-	if err == sql.ErrNoRows {
-		return 0, nil
-	} else if err != nil {
+func (r *PostgresUserRepository) UserExists(ctx context.Context, auth0_id string) (models.User, error) {
+	const query = `
+		SELECT id, auth0_id, email, name, created_at
+		FROM users
+		WHERE auth0_id = $1
+	`
+	row := r.db.QueryRowContext(ctx, query, auth0_id)
+
+	var user models.User
+	var name sql.NullString
+
+	if err := row.Scan(&user.ID, &user.Auth0ID, &user.Email, &name, &user.CreatedAt); err != nil {
+		if err == sql.ErrNoRows {
+			return models.User{}, nil
+		}
 		log.Printf("Error checking user existence: %v\n", err)
-		return 0, err
+		return models.User{}, err
 	}
-	return userID, nil
+
+	if name.Valid {
+		user.Name = &name.String
+	} else {
+		user.Name = nil
+	}
+
+	// roles aren’t stored in users table → service should populate them separately
+	user.Role = []string{}
+
+	return user, nil
 }
 
 // FindUserByID retrieves a user by their ID from the database.
@@ -68,21 +89,26 @@ func (r *PostgresUserRepository) FindUserByID(ctx context.Context, ID int) (*mod
 	return &user, nil
 }
 
-func (r *PostgresUserRepository) GetUsernameByAuth0ID(ctx context.Context, id string) (string, error) {
-	query := `SELECT name FROM users WHERE auth0_id = $1`
-	var name sql.NullString
-	err := r.db.QueryRowContext(ctx, query, id).Scan(&name)
-	if err != nil {
+func (r *PostgresUserRepository) GetUsernameByAuth0ID(ctx context.Context, id string) (models.User, error) {
+	query := `SELECT id, name, email FROM users WHERE auth0_id = $1`
+	row := r.db.QueryRowContext(ctx, query, id)
+
+	var user models.User
+	var name sql.NullString // Use sql.NullString for nullable columns
+	if err := row.Scan(&user.ID, &name, &user.Email); err != nil {
 		if err == sql.ErrNoRows {
-			return "", nil
+			return models.User{}, nil
 		}
-		log.Printf("Error fetching username by Auth0 ID: %v\n", err)
-		return "", err
+		log.Printf("Error fetching user by Auth0 ID: %v\n", err)
+		return models.User{}, err
 	}
 	if name.Valid {
-		return name.String, nil
+		user.Name = &name.String
+	} else {
+		user.Name = nil
 	}
-	return "", nil
+
+	return user, nil
 }
 
 // UpdateUser updates a user in the database.

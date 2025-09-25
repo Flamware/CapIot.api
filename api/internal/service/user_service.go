@@ -10,7 +10,7 @@ import (
 
 // UserService defines the interface for user-related business logic
 type UserService interface {
-	CreateUser(ctx context.Context, auth0ID, auth0Email string) (int, error)
+	CreateUser(ctx context.Context, auth0ID, auth0Email string) (error, models.User)
 	GetUserByID(ctx context.Context, id int) (*models.User, error)
 	UpdateUser(ctx context.Context, user models.User) (*models.User, error)
 	DeleteUser(ctx context.Context, id int) error
@@ -36,23 +36,23 @@ func NewUserService(userDAO dao.UserDAO, authRepo *repository.AuthRepository) *D
 }
 
 // CreateUser checks if a user with the given Auth0 ID exists, and creates one if not
-func (s *DefaultUserService) CreateUser(ctx context.Context, auth0ID, auth0Email string) (int, error) {
+func (s *DefaultUserService) CreateUser(ctx context.Context, auth0ID, auth0Email string) (error, models.User) {
 	// The service layer can define its own timeout if it needs to, but we'll pass the context down.
-	userID, err := s.userDAO.UserExists(ctx, auth0ID)
+	existingUser, err := s.userDAO.UserExists(ctx, auth0ID)
 	if err != nil {
-		return 0, fmt.Errorf("failed to check if user exists: %w", err)
+		return fmt.Errorf("failed to check user existence: %w", err), models.User{}
+	}
+	if existingUser.ID != 0 {
+		// User already exists, return existing user
+		return nil, existingUser
 	}
 
-	if userID != 0 {
-		return userID, nil
-	}
-
-	userID, err = s.userDAO.CreateUser(ctx, auth0ID, auth0Email)
+	// User does not exist, create a new one
+	createdUser, err := s.userDAO.CreateUser(ctx, auth0ID, auth0Email)
 	if err != nil {
-		return 0, fmt.Errorf("failed to create user: %w", err)
+		return fmt.Errorf("failed to create user: %w", err), models.User{}
 	}
-
-	return userID, nil
+	return nil, createdUser
 }
 
 // GetUserByID retrieves a user by their internal ID
