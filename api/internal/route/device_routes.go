@@ -56,7 +56,6 @@ func SetupDeviceRoute(r *mux.Router, deviceHandler *handlers.DeviceHandler, mqtt
 	).Methods(http.MethodGet)
 
 	r.Handle("/api/devices/{deviceID}/components", middleware.JWTAuthMiddleware(middleware.CheckDeviceAccess(deviceHandler)(http.HandlerFunc(deviceHandler.GetComponentsByDeviceID)))).Methods(http.MethodGet)
-	r.Handle("/api/devices/{deviceID}/logs", middleware.JWTAuthMiddleware(middleware.CheckDeviceAccess(deviceHandler)(http.HandlerFunc(deviceHandler.GetLogs)))).Methods(http.MethodGet)
 	r.Handle("/api/devices/{deviceID}/components/{componentID}/command", middleware.JWTAuthMiddleware(middleware.CheckDeviceAccess(deviceHandler)(http.HandlerFunc(mqttHandler.HandleCommandComponent)))).Methods(http.MethodPost)
 	r.Handle("/api/devices/{deviceID}/sensors", middleware.JWTAuthMiddleware(middleware.CheckDeviceAccess(deviceHandler)(http.HandlerFunc(deviceHandler.GetSensorsByDeviceID)))).Methods(http.MethodGet)
 	// Routes that specify a device and a component

@@ -18,7 +18,7 @@ func SetupLocationRoutes(r *mux.Router, locationHandler *handlers.LocationHandle
 	).Methods(http.MethodGet)
 
 	// Route for getting locations filtered by site IDs.
-	r.Handle("/api/locations/sites/{siteID}/",
-		middleware.JWTAuthMiddleware(middleware.CheckSiteAccess(locationHandler)(http.HandlerFunc(locationHandler.GetLocationsBySiteID))),
+	r.Handle("/api/locations/sites/{siteIDs}/",
+		middleware.JWTAuthMiddleware(middleware.CheckSiteAccess(locationHandler)(http.HandlerFunc(locationHandler.GetLocationsBySiteIDs))),
 	).Methods(http.MethodGet)
 }

@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 )
 
 type LocationHandler struct {
@@ -266,8 +267,7 @@ func (h *LocationHandler) GetSitesWithPagination(w http.ResponseWriter, r *http.
 
 	utils.RespondWithJSON(w, http.StatusOK, sitesData)
 }
-
-func (h *LocationHandler) GetLocationsBySiteID(w http.ResponseWriter, r *http.Request) {
+func (h *LocationHandler) GetLocationsBySiteIDs(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
 		utils.RespondWithError(w, apiErr)
@@ -276,12 +276,14 @@ func (h *LocationHandler) GetLocationsBySiteID(w http.ResponseWriter, r *http.Re
 
 	// Read query params
 	query := r.URL.Query()
-	siteID := mux.Vars(r)["siteID"]
-	if siteID == "" {
-		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Missing site_ids query parameter", nil, http.StatusBadRequest)
+	// Renamed the path variable to siteIDParam to avoid confusion with the slice of IDs
+	siteIDParam := mux.Vars(r)["siteIDs"]
+	if siteIDParam == "" {
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Missing site IDs in path", nil, http.StatusBadRequest)
 		utils.RespondWithError(w, apiErr)
 		return
 	}
+
 	// Read page & limit for pagination (optional)
 	pageStr := query.Get("page")
 	limitStr := query.Get("limit")
@@ -301,8 +303,30 @@ func (h *LocationHandler) GetLocationsBySiteID(w http.ResponseWriter, r *http.Re
 		term = ""
 	}
 
-	// Call service with validated site IDs + user + pagination + search term
-	locations, err := h.locationService.GetLocationsBySiteID(r.Context(), siteID, page, limit, term)
+	// Convert comma-separated siteIDParam to slice of ints
+	idStrs := strings.Split(siteIDParam, ",")
+	var siteIDInts []int
+	for _, rawIDStr := range idStrs {
+		// Trim surrounding whitespace from each ID string
+		idStr := strings.TrimSpace(rawIDStr)
+
+		if idStr == "" {
+			continue // Skip empty strings that result from splitting, e.g., "4,,5" or trailing commas
+		}
+
+		id, err := strconv.Atoi(idStr)
+		if err != nil {
+			// IMPORTANT: This error is triggered when non-integer values are in the comma-separated list
+			apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Invalid site ID format. IDs must be integers.", map[string]string{"error": err.Error()}, http.StatusBadRequest)
+			utils.RespondWithError(w, apiErr)
+			return
+		}
+		siteIDInts = append(siteIDInts, id)
+	}
+
+	// Call service with the validated slice of integers (siteIDInts)
+	// NOTE: The service function signature must be updated to accept []int instead of string.
+	locations, err := h.locationService.GetLocationsBySiteIDs(r.Context(), siteIDInts, page, limit, term)
 	if err != nil {
 		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Error getting locations", map[string]string{"error": err.Error()}, http.StatusInternalServerError)
 		utils.RespondWithError(w, apiErr)

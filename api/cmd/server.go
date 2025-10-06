@@ -77,6 +77,7 @@ func main() {
 		userService,
 		deviceService,
 		locationService,
+		MqttHandlerInstance,
 	)
 
 	// Set up the router with the handlers and MQTT client

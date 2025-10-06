@@ -13,4 +13,6 @@ type NotificationDAO interface {
 	DeleteNotification(ctx context.Context, notificationID int, userID int) error
 	CreateNotification(ctx context.Context, notification models.Notification) (int, error)
 	DeleteAllNotifications(ctx context.Context, id int) error
+	GetDeviceNotifications(ctx context.Context, id string, limit int, i int) ([]models.Notification, error)
+	CountDeviceNotifications(ctx context.Context, id string) (int, error)
 }

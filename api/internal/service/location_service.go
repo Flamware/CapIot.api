@@ -26,7 +26,7 @@ type LocationService interface {
 	CreateSite(ctx context.Context, site models.Site) (*models.Site, error)
 	GetSitesWithPagination(ctx context.Context, page int, limit int, term string) (map[string]interface{}, error)
 	DeleteSite(ctx context.Context, id int64) error
-	GetLocationsBySiteID(ctx context.Context, siteID string, page int, limit int, term string) (map[string]interface{}, error)
+	GetLocationsBySiteIDs(ctx context.Context, siteID []int, page int, limit int, term string) (map[string]interface{}, error)
 	CheckUserAccessToLocation(userID int, locationID int64) (bool, error)
 	CheckUserAccessToSite(userID int, siteID int64) (bool, error)
 }
@@ -206,10 +206,10 @@ func (s *DefaultLocationService) GetSitesWithPagination(ctx context.Context, pag
 	return response, nil
 }
 
-func (s *DefaultLocationService) GetLocationsBySiteID(ctx context.Context, siteID string, page int, limit int, term string) (map[string]interface{}, error) {
-	log.Printf("GetLocationsBySiteID called with siteIDs: %v, page: %d, limit: %d", siteID, page, limit)
+func (s *DefaultLocationService) GetLocationsBySiteIDs(ctx context.Context, siteIDs []int, page int, limit int, term string) (map[string]interface{}, error) {
+	log.Printf("GetLocationsBySiteID called with siteIDs: %v, page: %d, limit: %d", siteIDs, page, limit)
 
-	if len(siteID) == 0 {
+	if len(siteIDs) == 0 {
 		return map[string]interface{}{
 			"data":        []models.Location{},
 			"currentPage": page,
@@ -219,7 +219,7 @@ func (s *DefaultLocationService) GetLocationsBySiteID(ctx context.Context, siteI
 		}, nil
 	}
 
-	locations, err := s.dao.GetLocationsBySiteID(ctx, siteID, page, limit, term)
+	locations, err := s.dao.GetLocationsBySiteIDs(ctx, siteIDs, page, limit, term)
 	if err != nil {
 		log.Printf("Error fetching locations by site IDs: %v", err)
 		return nil, err

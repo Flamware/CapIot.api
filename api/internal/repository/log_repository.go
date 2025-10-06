@@ -4,6 +4,7 @@ import (
 	"CapIot-api/internal/models"
 	"context"
 	"database/sql"
+	"fmt"
 	"log"
 )
 
@@ -202,4 +203,106 @@ func (r *PostgresNotificationDAO) DeleteAllNotifications(ctx context.Context, us
     `
 	_, err := r.db.ExecContext(ctx, query, userID)
 	return err
+}
+
+// GetDeviceNotifications retrieves notifications for a specific device with pagination
+func (r *PostgresNotificationDAO) GetDeviceNotifications(ctx context.Context, deviceID string, limit, offset int) ([]models.Notification, error) {
+	// Check if deviceID exists
+	queryCheck := `SELECT 1 FROM public.devices WHERE device_id = $1`
+	var exists int
+	err := r.db.QueryRowContext(ctx, queryCheck, deviceID).Scan(&exists)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// Return a clear "not found" error
+			return nil, fmt.Errorf("device with ID %s does not exist", deviceID)
+		}
+		log.Printf("Error checking device existence: %v", err)
+		return nil, err
+	}
+
+	query := `
+		SELECT
+			l.log_id,
+			l.log_content,
+			l.log_timestamp,
+			l.log_read,
+			s.site_id,
+			s.site_name,
+			loc.location_id,
+			loc.location_name,
+			c.component_name,
+			c.component_type
+		FROM
+			public.component_log AS l
+		JOIN public.components AS c ON l.component_id = c.component_id
+		JOIN public.devices AS d ON c.device_id = d.device_id
+		JOIN public.device_location AS dl ON d.device_id = dl.device_id
+		JOIN public.locations AS loc ON dl.location_id = loc.location_id
+		JOIN public.sites AS s ON loc.site_id = s.site_id
+		WHERE
+			d.device_id = $1
+			AND dl.is_current = true
+		ORDER BY l.log_timestamp DESC
+		LIMIT $2 OFFSET $3
+	`
+
+	rows, err := r.db.QueryContext(ctx, query, deviceID, limit, offset)
+	if err != nil {
+		log.Printf("Error querying device notifications: %v", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var notifications []models.Notification
+
+	for rows.Next() {
+		var n models.Notification
+
+		if err := rows.Scan(
+			&n.LogID,
+			&n.LogContent,
+			&n.LogTimestamp,
+			&n.LogRead,
+			&n.SiteID,
+			&n.SiteName,
+			&n.LocationID,
+			&n.LocationName,
+			&n.Component,
+			&n.ComponentType,
+		); err != nil {
+			log.Printf("Error scanning row: %v", err)
+			return nil, err
+		}
+
+		notifications = append(notifications, n)
+	}
+
+	if err := rows.Err(); err != nil {
+		log.Printf("Error iterating rows: %v", err)
+		return nil, err
+	}
+
+	return notifications, nil
+}
+
+// CountDeviceNotifications returns the total number of notifications for a specific device
+func (r *PostgresNotificationDAO) CountDeviceNotifications(ctx context.Context, deviceID string) (int, error) {
+	query := `
+		SELECT COUNT(*)
+		FROM public.component_log AS l
+		JOIN public.components AS c ON l.component_id = c.component_id
+		JOIN public.devices AS d ON c.device_id = d.device_id
+		JOIN public.device_location AS dl ON d.device_id = dl.device_id
+		JOIN public.locations AS loc ON dl.location_id = loc.location_id
+		JOIN public.sites AS s ON loc.site_id = s.site_id
+		WHERE d.device_id = $1 AND dl.is_current = true
+	`
+
+	var count int
+	if err := r.db.QueryRowContext(ctx, query, deviceID).Scan(&count); err != nil {
+		log.Printf("Error counting device notifications: %v", err)
+		return 0, err
+	}
+
+	return count, nil
 }

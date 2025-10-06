@@ -8,7 +8,7 @@ import (
 	"github.com/gorilla/mux"
 )
 
-func SetupNotificationsRoute(r *mux.Router, notificationHandler *handlers.NotificationHandler) {
+func SetupNotificationsRoute(r *mux.Router, notificationHandler *handlers.NotificationHandler, deviceHandler *handlers.DeviceHandler) {
 	// 1️⃣ Get all notifications
 	r.Handle("/api/notifications", middleware.JWTAuthMiddleware(http.HandlerFunc(notificationHandler.GetNotifications))).Methods(http.MethodGet)
 
@@ -23,4 +23,8 @@ func SetupNotificationsRoute(r *mux.Router, notificationHandler *handlers.Notifi
 
 	// 5️⃣ Delete a single notification
 	r.Handle("/api/notifications/{notificationID}", middleware.JWTAuthMiddleware(http.HandlerFunc(notificationHandler.DeleteNotification))).Methods(http.MethodDelete)
+
+	r.Handle("/api/notifications/device/{deviceID}", middleware.JWTAuthMiddleware(
+		middleware.CheckDeviceAccess(deviceHandler)(
+			http.HandlerFunc(notificationHandler.GetDeviceNotification)))).Methods(http.MethodGet)
 }

@@ -17,14 +17,22 @@ type AdminHandler struct {
 	userService     service.UserService
 	deviceService   service.DeviceService
 	locationService service.LocationService
+	mqttHandler     *MqttHandler
 }
 
-func NewAdminHandler(authService *service.DefaultAuthService, userService *service.DefaultUserService, deviceService *service.DefaultDeviceService, locationService service.LocationService) *AdminHandler {
+func NewAdminHandler(
+	authService *service.DefaultAuthService,
+	userService *service.DefaultUserService,
+	deviceService *service.DefaultDeviceService,
+	locationService service.LocationService,
+	mqttHandler *MqttHandler,
+) *AdminHandler {
 	return &AdminHandler{
 		authService:     authService,
 		userService:     userService,
 		deviceService:   deviceService,
 		locationService: locationService,
+		mqttHandler:     mqttHandler,
 	}
 }
 
@@ -219,6 +227,16 @@ func (h *AdminHandler) AssignDeviceToLocation(writer http.ResponseWriter, reques
 		return
 	}
 
+	// Send Stop Command to the device after assignment
+	if err := h.mqttHandler.SendCommandToDevice(assignment.DeviceID, "stop"); err != nil {
+		log.Printf("Failed to send stop command to device %s: %v", assignment.DeviceID, err)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Failed to send stop command to device", nil, http.StatusInternalServerError)
+		utils.RespondWithError(writer, apiErr)
+		return
+	}
+	log.Printf("Successfully sent stop command to device %s after assignment", assignment.DeviceID)
+
+	// Respond with no content
 	writer.WriteHeader(http.StatusNoContent)
 }
 

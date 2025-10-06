@@ -177,3 +177,38 @@ func (h *NotificationHandler) DeleteAllNotifications(w http.ResponseWriter, r *h
 
 	w.WriteHeader(http.StatusNoContent)
 }
+
+func (h *NotificationHandler) GetDeviceNotification(writer http.ResponseWriter, request *http.Request) {
+	vars := mux.Vars(request)
+	deviceID, ok := vars["deviceID"]
+	if !ok {
+		apiErr := models.NewAPIError(models.ErrorCodeBadRequest, "Missing device ID in path", nil, http.StatusBadRequest)
+		utils.RespondWithError(writer, apiErr)
+		return
+	}
+
+	// Pagination parameters
+	page, limit := 1, 10
+	if p, err := strconv.Atoi(request.URL.Query().Get("page")); err == nil && p > 0 {
+		page = p
+	}
+	if l, err := strconv.Atoi(request.URL.Query().Get("limit")); err == nil && l > 0 && l <= 100 {
+		limit = l
+	}
+
+	notifications, err := h.notificationService.GetDeviceNotifications(request.Context(), deviceID, page, limit)
+	if err != nil {
+		log.Printf("Failed to get notifications for device %d: %v", deviceID, err)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Failed to retrieve device notifications", nil, http.StatusInternalServerError)
+		utils.RespondWithError(writer, apiErr)
+		return
+	}
+
+	writer.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(writer).Encode(notifications); err != nil {
+		log.Printf("Failed to encode device notifications: %v", err)
+		apiErr := models.NewAPIError(models.ErrorCodeInternalServerError, "Failed to encode response", nil, http.StatusInternalServerError)
+		utils.RespondWithError(writer, apiErr)
+		return
+	}
+}

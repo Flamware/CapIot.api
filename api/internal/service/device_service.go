@@ -197,17 +197,8 @@ func (s *DefaultDeviceService) SetDeviceToLocation(ctx context.Context, deviceID
 		return fmt.Errorf("device '%s' not found", deviceID)
 	}
 
-	// Check if location exists
-	location, err := s.deviceDAO.GetLocationByDeviceID(deviceID)
-	log.Printf("Current location for device '%s': %+v", deviceID, *location.ID)
-	if err != nil && err != sql.ErrNoRows {
-		return fmt.Errorf("error checking location for device '%s': %w", deviceID, err)
-	}
-	if location != nil && location.ID == &locationID {
-		return fmt.Errorf("device '%s' is already assigned to location '%d'", deviceID, locationID)
-	}
-
 	// Set device to location
+	log.Printf("Setting device '%s' to location '%d'\n", deviceID, locationID)
 	err = s.deviceDAO.SetDeviceToLocation(ctx, deviceID, locationID)
 	if err != nil {
 		return fmt.Errorf("failed to set device '%s' to location '%d': %w", deviceID, locationID, err)

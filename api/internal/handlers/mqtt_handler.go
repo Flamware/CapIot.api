@@ -95,6 +95,30 @@ func (h *MqttHandler) PurgeDeviceFromMqtt(deviceID string) error {
 	return err // Return the first error encountered, or nil if all succeeded
 }
 
+func (h *MqttHandler) SendCommandToDevice(deviceID, command string) error {
+	if deviceID == "" || command == "" {
+		return fmt.Errorf("deviceID and command cannot be empty")
+	}
+	payload := map[string]interface{}{
+		"device_id": deviceID,
+		"command":   command,
+	}
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		log.Printf("Error marshalling MQTT payload for command: %v", err)
+		return fmt.Errorf("failed to marshal MQTT payload: %w", err)
+	}
+	topic := fmt.Sprintf("devices/commands/%s", deviceID)
+	token := h.mqttClient.Publish(topic, 0, false, payloadBytes)
+	token.Wait()
+	if token.Error() != nil {
+		log.Printf("MQTT publish error for command: %v", token.Error())
+		return fmt.Errorf("failed to publish MQTT message: %w", token.Error())
+	}
+	log.Printf("MQTT command '%s' published to %s: %s", command, topic, payloadBytes)
+	return nil
+}
+
 // HandleDeviceAvailability gère le message de disponibilité de l'appareil et effectue le provisionnement
 func (h *MqttHandler) HandleDeviceAvailability(client mqtt.Client, msg mqtt.Message) {
 	var payload AvailabilityPayload

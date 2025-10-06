@@ -22,5 +22,5 @@ type LocationDAO interface {
 	DeleteSite(ctx context.Context, id int64) error
 	CheckUserAccessToLocation(id int, id2 int64) (bool, error)
 	CheckUserAccessToSite(id int, id2 int64) (bool, error)
-	GetLocationsBySiteID(ctx context.Context, siteID string, page int, limit int, term string) ([]*models.Location, error)
+	GetLocationsBySiteIDs(ctx context.Context, siteIDs []int, page int, limit int, term string) ([]*models.Location, error)
 }

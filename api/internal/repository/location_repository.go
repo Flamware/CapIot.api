@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
-	"strconv"
 	"time"
 )
 
@@ -482,15 +481,11 @@ func (r *PostgresLocationRepository) CheckUserAccessToSite(userID int, siteID in
 	}
 	return true, nil
 }
-func (r *PostgresLocationRepository) GetLocationsBySiteID(ctx context.Context, siteID string, page int, limit int, term string) ([]*models.Location, error) {
+func (r *PostgresLocationRepository) GetLocationsBySiteIDs(ctx context.Context, siteIDs []int, page int, limit int, term string) ([]*models.Location, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
 	// Parse the siteID string to an integer
-	siteIDInt, err := strconv.Atoi(siteID)
-	if err != nil {
-		return nil, fmt.Errorf("invalid siteID: %w", err)
-	}
 
 	if page < 1 {
 		page = 1
@@ -498,53 +493,57 @@ func (r *PostgresLocationRepository) GetLocationsBySiteID(ctx context.Context, s
 	if limit < 1 {
 		limit = 10
 	}
+	offset := (page - 1) * limit
 
-	// Base query
-	query := `
-        SELECT location_id, location_name, location_description, site_id
-        FROM locations
-        WHERE site_id = $1
-    `
-	args := []interface{}{siteIDInt} // Use the parsed integer
-	argIndex := 2
-
-	// Add search term if present
-	if term != "" {
-		query += fmt.Sprintf(" AND location_name ILIKE $%d", argIndex)
-		args = append(args, "%"+term+"%")
-		argIndex++
+	// Create a dynamic placeholder string for the IN clause
+	placeholders := ""
+	args := make([]interface{}, len(siteIDs)+3) // +3 for term, limit, offset
+	for i, id := range siteIDs {
+		placeholders += fmt.Sprintf("$%d,", i+1)
+		args[i] = id
 	}
+	placeholders = placeholders[:len(placeholders)-1] // Remove trailing comma
 
-	// Pagination
-	query += fmt.Sprintf(" ORDER BY location_name LIMIT $%d OFFSET $%d", argIndex, argIndex+1)
-	args = append(args, limit, (page-1)*limit)
+	// Add term, limit, and offset to args
+	args[len(siteIDs)] = term
+	args[len(siteIDs)+1] = limit
+	args[len(siteIDs)+2] = offset
+
+	query := fmt.Sprintf(`
+		SELECT location_id, location_name, location_description, site_id
+		FROM locations
+		WHERE site_id IN (%s) AND location_name ILIKE '%%' || $%d || '%%'
+		ORDER BY location_name
+		LIMIT $%d OFFSET $%d
+	`, placeholders, len(siteIDs)+1, len(siteIDs)+2, len(siteIDs)+3)
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		log.Printf("Error querying locations by site ID: %v\n", err)
+		log.Printf("Error querying locations by site IDs: %v\n", err)
 		return nil, err
 	}
 	defer rows.Close()
 
 	var locations []*models.Location
 	for rows.Next() {
-		var loc models.Location
-		var siteID sql.NullInt32 // Changed to NullInt32 for integer site_id
-		if err := rows.Scan(&loc.ID, &loc.Name, &loc.Description, &siteID); err != nil {
+		var location models.Location
+		var siteID sql.NullInt32
+		if err := rows.Scan(&location.ID, &location.Name, &location.Description, &siteID); err != nil {
 			log.Printf("Error scanning location row: %v\n", err)
 			return nil, err
 		}
 		if siteID.Valid {
 			id := int(siteID.Int32)
-			loc.SiteID = &id
+			location.SiteID = &id
+		} else {
+			location.SiteID = nil
 		}
-		locations = append(locations, &loc)
+		locations = append(locations, &location)
 	}
 
 	if err := rows.Err(); err != nil {
 		log.Printf("Error iterating location rows: %v\n", err)
 		return nil, err
 	}
-
 	return locations, nil
 }

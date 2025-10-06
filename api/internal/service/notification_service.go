@@ -27,6 +27,7 @@ type NotificationService interface {
 	DeleteNotification(ctx context.Context, notificationID int, userID int) error
 	CreateNotification(ctx context.Context, notification models.Notification) (int, error)
 	DeleteAllNotifications(ctx context.Context, id int) error
+	GetDeviceNotifications(ctx context.Context, id string, page int, limit int) (map[string]interface{}, error) // Changed 'string' to 'int'
 }
 
 // GetNotifications retrieves notifications for a user with pagination
@@ -96,4 +97,27 @@ func (s *DefaultNotificationService) DeleteAllNotifications(ctx context.Context,
 		return fmt.Errorf("failed to delete all notifications for user %d: %w", userID, err)
 	}
 	return nil
+}
+
+// GetDeviceNotifications retrieves notifications for a specific device with pagination
+func (s *DefaultNotificationService) GetDeviceNotifications(ctx context.Context, deviceID string, page int, limit int) (map[string]interface{}, error) {
+	notifications, err := s.NotificationDAO.GetDeviceNotifications(ctx, deviceID, limit, (page-1)*limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get notifications for device with ID %d: %w", deviceID, err)
+	}
+
+	totalNotifications, err := s.NotificationDAO.CountDeviceNotifications(ctx, deviceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count notifications for device with ID %d: %w", deviceID, err)
+	}
+
+	totalPages := (totalNotifications + limit - 1) / limit
+	response := map[string]interface{}{
+		"data":        notifications,
+		"currentPage": page,
+		"pageSize":    limit,
+		"totalItems":  totalNotifications,
+		"totalPages":  totalPages,
+	}
+	return response, nil
 }
