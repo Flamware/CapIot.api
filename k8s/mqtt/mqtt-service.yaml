@@ -1,16 +1,12 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: mosquitto-service # A unique name for your Mosquitto Service
-  namespace: capiot      # This Service will be in the 'capiot' namespace
-  labels:
-    app: mqtt-service    # Optional: label the service itself
+  name: mqtt
 spec:
+  type: LoadBalancer   # 👈 makes it externally accessible
   selector:
-    app: mqtt            # **Crucial:** Matches the 'app' label of your Mosquitto Pods
+    app: mqtt
   ports:
     - protocol: TCP
-      port: 1883         # The port on which this Service will be accessible externally
-      targetPort: 1883   # The port on which your Mosquitto container is listening inside the Pod
-      name: mqtt-tcp     # Optional: name the port for clarity
-  type: LoadBalancer     # **Changed:** Civo will provision an external IP for this service
+      port: 1883
+      targetPort: 1883
