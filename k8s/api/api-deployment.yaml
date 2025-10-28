@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: api
-          image: flamware/capiot-api:test
+          image: flamware/capiot-api:v1
           imagePullPolicy: Always
           envFrom:
             - secretRef:
@@ -26,13 +26,13 @@ spec:
             - containerPort: 8080  # Matches Service port
           livenessProbe:
             httpGet:
-              path: /health
+              path: /api/health
               port: 8080
             initialDelaySeconds: 15
             periodSeconds: 20
           readinessProbe:
             httpGet:
-              path: /ready
+              path: /api/ready
               port: 8080
             initialDelaySeconds: 5
             periodSeconds: 10

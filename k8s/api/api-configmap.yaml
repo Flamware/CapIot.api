@@ -5,4 +5,4 @@ metadata:
   namespace: capiot
 data:
   DB_HOST: "postgres-service"
-  MQTT_BROKER: "tcp://mosquitto-service.capiot.svc.cluster.local:1883"
+  MQTT_BROKER: "tcp://mqtt.capiot.svc.cluster.local:1883"

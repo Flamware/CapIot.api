@@ -1,0 +1,19 @@
+# cert-final.yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: capiot-tls-secret
+  namespace: capiot
+  # 🌟 Optionnel : Vous pouvez ajouter une référence au propriétaire Ingress si elle était présente 🌟
+  # metadata:
+  #   ownerReferences:
+  #   - apiVersion: networking.k8s.io/v1
+  #     kind: Ingress
+  #     name: capiot-ingress
+spec:
+  secretName: capiot-tls-secret
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames:
+    - flamware.work

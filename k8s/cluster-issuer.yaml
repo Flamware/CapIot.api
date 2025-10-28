@@ -1,0 +1,17 @@
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod # ⬅️ DOIT CORRESPONDRE AU NOM DANS L'INGRESS
+spec:
+  acme:
+    # ⚠️ REMPLACEZ AVEC VOTRE EMAIL VALIDE
+    email: axel.antunes@hotmail.Com
+    server: https://acme-v02.api.letsencrypt.org/directory # ⬅️ Serveur de Production
+    privateKeySecretRef:
+      # Secret pour stocker la clé ACME
+      name: letsencrypt-prod-private-key
+    solvers:
+      - http01:
+          ingress:
+            # Assurez-vous que c'est la bonne classe d'Ingress Controller
+            class: nginx
