@@ -1,0 +1,1141 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "contact": {}
+    },
+    "paths": {
+        "/admin/users": {
+            "get": {
+                "description": "Retrieves a paginated list of all users",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Get all users",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Items per page",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Search term",
+                        "name": "search",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/users/{userID}": {
+            "put": {
+                "description": "Updates user details and assigned sites",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Update user and location",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "User ID",
+                        "name": "userID",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Update details",
+                        "name": "update",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "name": {
+                                    "type": "string"
+                                },
+                                "sites": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "integer"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/users/{userID}/sites": {
+            "get": {
+                "description": "Retrieves sites for a specific user",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Get user sites",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "User ID",
+                        "name": "userID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/CapIot-api_internal_models.Site"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/assign-device": {
+            "post": {
+                "description": "Assigns a device to a location",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Assign device to location (Admin)",
+                "parameters": [
+                    {
+                        "description": "Assignment details",
+                        "name": "assignment",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.AssignDeviceToLocationRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/assign-user/{userID}": {
+            "post": {
+                "description": "Assigns a user to a specific location",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Assign user to location",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "User ID",
+                        "name": "userID",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Assignment details",
+                        "name": "assignment",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "locationID": {
+                                    "type": "integer"
+                                }
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/devices-components-locations": {
+            "get": {
+                "description": "Retrieves a paginated list of devices, components, and locations for admin view",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Get devices, components, and locations (Admin)",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Items per page",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Search term",
+                        "name": "search",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/location/{locationID}": {
+            "put": {
+                "description": "Modifies an existing location",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Modify location (Admin)",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Location ID",
+                        "name": "locationID",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Location details",
+                        "name": "location",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.Location"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "Deletes a location",
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Delete location (Admin)",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Location ID",
+                        "name": "locationID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/locations-devices-users": {
+            "get": {
+                "description": "Retrieves a paginated list of locations, devices, and users for admin view",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Get locations, devices, and users (Admin)",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Items per page",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Search term",
+                        "name": "search",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/locations/sites/{siteIDs}": {
+            "get": {
+                "description": "Retrieves locations for multiple sites",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "locations"
+                ],
+                "summary": "Get locations by site IDs",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Comma-separated Site IDs",
+                        "name": "siteIDs",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Items per page",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Search term",
+                        "name": "search",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/notifications": {
+            "get": {
+                "description": "Retrieves a paginated list of notifications for the authenticated user",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "Get user notifications",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Items per page",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/CapIot-api_internal_models.Notification"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/notifications/delete-all": {
+            "delete": {
+                "description": "Deletes all notifications for the user",
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "Delete all notifications",
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/notifications/device/{deviceID}": {
+            "get": {
+                "description": "Retrieves notifications for a specific device",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "Get device notifications",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Device ID",
+                        "name": "deviceID",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Items per page",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/CapIot-api_internal_models.Notification"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/notifications/mark-all-read": {
+            "patch": {
+                "description": "Marks all notifications for the user as read",
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "Mark all notifications as read",
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/notifications/{notificationID}": {
+            "delete": {
+                "description": "Deletes a specific notification",
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "Delete notification",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Notification ID",
+                        "name": "notificationID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "description": "Marks a specific notification as read",
+                "tags": [
+                    "notifications"
+                ],
+                "summary": "Mark notification as read",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Notification ID",
+                        "name": "notificationID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/sites": {
+            "get": {
+                "description": "Retrieves a paginated list of sites",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sites"
+                ],
+                "summary": "Get sites with pagination",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Items per page",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Search term",
+                        "name": "search",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/sites/me": {
+            "get": {
+                "description": "Retrieves sites assigned to the current user",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Get my sites",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/CapIot-api_internal_models.Site"
+                            }
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/users/me": {
+            "put": {
+                "description": "Updates the username of the current user",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Change username",
+                "parameters": [
+                    {
+                        "description": "New username",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "name": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.User"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/users/me/locations": {
+            "get": {
+                "description": "Retrieves all locations assigned to the current user",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Get user locations",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/CapIot-api_internal_models.Location"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/site/{siteID}": {
+            "delete": {
+                "description": "Deletes a site by its ID",
+                "tags": [
+                    "sites"
+                ],
+                "summary": "Delete site",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Site ID",
+                        "name": "siteID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/CapIot-api_internal_models.APIError"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "CapIot-api_internal_models.APIError": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "description": "Use the new ErrorCode type",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/CapIot-api_internal_models.ErrorCode"
+                        }
+                    ]
+                },
+                "details": {
+                    "description": "Optional: Additional details"
+                },
+                "message": {
+                    "description": "Human-readable error message",
+                    "type": "string"
+                }
+            }
+        },
+        "CapIot-api_internal_models.AssignDeviceToLocationRequest": {
+            "type": "object",
+            "properties": {
+                "device_id": {
+                    "type": "string"
+                },
+                "location_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "CapIot-api_internal_models.ErrorCode": {
+            "type": "string",
+            "enum": [
+                "internal_server_error",
+                "bad_request",
+                "not_found",
+                "forbidden",
+                "unauthorized",
+                "method_not_allowed",
+                "invalid_token",
+                "token_expired",
+                "insufficient_permissions",
+                "validation_failed",
+                "missing_parameter",
+                "invalid_format",
+                "unsupported_media_type",
+                "resource_not_found",
+                "duplicate_resource"
+            ],
+            "x-enum-varnames": [
+                "ErrorCodeInternalServerError",
+                "ErrorCodeBadRequest",
+                "ErrorCodeNotFound",
+                "ErrorCodeForbidden",
+                "ErrorCodeUnauthorized",
+                "ErrorCodeMethodNotAllowed",
+                "ErrorCodeInvalidToken",
+                "ErrorCodeTokenExpired",
+                "ErrorCodeInsufficientPermissions",
+                "ErrorCodeValidationFailed",
+                "ErrorCodeMissingParameter",
+                "ErrorCodeInvalidFormat",
+                "ErrorCodeUnsupportedMediaType",
+                "ErrorCodeResourceNotFound",
+                "ErrorCodeDuplicateResource"
+            ]
+        },
+        "CapIot-api_internal_models.Location": {
+            "type": "object",
+            "properties": {
+                "location_description": {
+                    "type": "string"
+                },
+                "location_id": {
+                    "type": "integer"
+                },
+                "location_name": {
+                    "type": "string"
+                },
+                "site_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "CapIot-api_internal_models.Notification": {
+            "type": "object",
+            "properties": {
+                "component_name": {
+                    "description": "Component name",
+                    "type": "string"
+                },
+                "component_type": {
+                    "description": "Component type (sensor, actuator, etc.)",
+                    "type": "string"
+                },
+                "location_id": {
+                    "description": "Associated location ID",
+                    "type": "integer"
+                },
+                "location_name": {
+                    "description": "Associated location name",
+                    "type": "string"
+                },
+                "log_content": {
+                    "description": "Content/message of the log",
+                    "type": "string"
+                },
+                "log_id": {
+                    "description": "Primary key in component_log table",
+                    "type": "integer"
+                },
+                "log_read": {
+                    "description": "Whether the notification has been read",
+                    "type": "boolean"
+                },
+                "log_timestamp": {
+                    "description": "Timestamp of the log",
+                    "type": "string"
+                },
+                "log_type": {
+                    "description": "Type of log (info, warning, error, etc.)",
+                    "type": "string"
+                },
+                "site_id": {
+                    "description": "Associated site ID",
+                    "type": "integer"
+                },
+                "site_name": {
+                    "description": "Associated site name",
+                    "type": "string"
+                }
+            }
+        },
+        "CapIot-api_internal_models.Site": {
+            "type": "object",
+            "properties": {
+                "site_address": {
+                    "type": "string"
+                },
+                "site_id": {
+                    "type": "integer"
+                },
+                "site_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "CapIot-api_internal_models.User": {
+            "type": "object",
+            "properties": {
+                "auth0_id": {
+                    "description": "Auth0 ID of the user",
+                    "type": "string"
+                },
+                "createdAt": {
+                    "description": "Timestamp for when the user was created",
+                    "type": "string"
+                },
+                "email": {
+                    "description": "Email of the user",
+                    "type": "string"
+                },
+                "id": {
+                    "description": "ID from the database",
+                    "type": "integer"
+                },
+                "name": {
+                    "description": "Email of the user",
+                    "type": "string"
+                },
+                "roles": {
+                    "description": "List of roles assigned to the user",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        }
+    }
+}

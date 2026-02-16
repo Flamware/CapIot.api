@@ -6,10 +6,11 @@ import (
 	"CapIot-api/internal/service"
 	"CapIot-api/internal/utils"
 	"encoding/json"
-	"github.com/gorilla/mux"
 	"log"
 	"net/http"
 	"strconv"
+
+	"github.com/gorilla/mux"
 )
 
 type AdminHandler struct {
@@ -36,7 +37,18 @@ func NewAdminHandler(
 	}
 }
 
-// GetDevicescomponentsLocations handles the request to get all devices, components, and locations with pagination and search.
+// GetDevicescomponentsLocations godoc
+// @Summary      Get devices, components, and locations (Admin)
+// @Description  Retrieves a paginated list of devices, components, and locations for admin view
+// @Tags         admin
+// @Produce      json
+// @Param        page query int false "Page number"
+// @Param        limit query int false "Items per page"
+// @Param        search query string false "Search term"
+// @Success      200  {object}  map[string]interface{}
+// @Failure      400  {object}  models.APIError
+// @Failure      500  {object}  models.APIError
+// @Router       /api/devices-components-locations [get]
 func (h *AdminHandler) GetDevicescomponentsLocations(writer http.ResponseWriter, request *http.Request) {
 	log.Printf("Received %s request for devices, components, and locations", request.Method)
 
@@ -78,7 +90,16 @@ func (h *AdminHandler) GetDevicescomponentsLocations(writer http.ResponseWriter,
 	utils.RespondWithJSON(writer, http.StatusOK, devicesWithPagination)
 }
 
-// GetUsersLocations handles the request to get a specific user's sites.
+// GetUsersLocations godoc
+// @Summary      Get user sites (Admin)
+// @Description  Retrieves sites for a specific user
+// @Tags         admin
+// @Produce      json
+// @Param        userID path int true "User ID"
+// @Success      200  {array}   models.Site
+// @Failure      400  {object}  models.APIError
+// @Failure      500  {object}  models.APIError
+// @Router       /admin/users/{userID}/sites [get]
 func (h *AdminHandler) GetUsersLocations(writer http.ResponseWriter, request *http.Request) {
 	log.Printf("Received %s request for users and locations", request.Method)
 
@@ -118,7 +139,18 @@ func (h *AdminHandler) GetUsersLocations(writer http.ResponseWriter, request *ht
 	utils.RespondWithJSON(writer, http.StatusOK, usersLocations)
 }
 
-// GetLocationsDevicesUsers handles the request to get locations, devices, and users with pagination and search.
+// GetLocationsDevicesUsers godoc
+// @Summary      Get locations, devices, and users (Admin)
+// @Description  Retrieves a paginated list of locations, devices, and users for admin view
+// @Tags         admin
+// @Produce      json
+// @Param        page query int false "Page number"
+// @Param        limit query int false "Items per page"
+// @Param        search query string false "Search term"
+// @Success      200  {object}  map[string]interface{}
+// @Failure      400  {object}  models.APIError
+// @Failure      500  {object}  models.APIError
+// @Router       /api/locations-devices-users [get]
 func (h *AdminHandler) GetLocationsDevicesUsers(writer http.ResponseWriter, request *http.Request) {
 	log.Printf("Received %s request for locations, devices, and users", request.Method)
 
@@ -160,8 +192,16 @@ func (h *AdminHandler) GetLocationsDevicesUsers(writer http.ResponseWriter, requ
 	utils.RespondWithJSON(writer, http.StatusOK, locDevUsers)
 }
 
-// GetUserRoleHandler retrieves the roles of the authenticated user
-// Note: This function belongs in a separate AuthHandler, but is updated here for consistency.
+// GetUserRoleHandler godoc
+// @Summary      Get user roles
+// @Description  Retrieves the roles of the authenticated user
+// @Tags         auth
+// @Produce      json
+// @Success      200  {object}  models.AuthResult
+// @Failure      400  {object}  models.APIError
+// @Failure      401  {object}  models.APIError
+// @Failure      500  {object}  models.APIError
+// @Router       /api/users/me/roles [get]
 func (h *AuthHandler) GetUserRoleHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Received %s request for user roles", r.Method)
 
@@ -183,8 +223,6 @@ func (h *AuthHandler) GetUserRoleHandler(w http.ResponseWriter, r *http.Request)
 	auth0UserID := claims.Sub
 	log.Printf("Retrieved User ID from claims: %d", auth0UserID)
 
-	// Note: The original code had a redundant 'if !ok' check here. Removed for clarity.
-
 	roles, err := h.authService.GetUserRoles(r.Context(), auth0UserID)
 	if err != nil {
 		log.Printf("Failed to get roles for user %s: %v", auth0UserID, err)
@@ -201,7 +239,17 @@ func (h *AuthHandler) GetUserRoleHandler(w http.ResponseWriter, r *http.Request)
 	utils.RespondWithJSON(w, http.StatusOK, response)
 }
 
-// AssignDeviceToLocation handles the request to assign a device to a location.
+// AssignDeviceToLocation godoc
+// @Summary      Assign device to location (Admin)
+// @Description  Assigns a device to a location
+// @Tags         admin
+// @Accept       json
+// @Produce      json
+// @Param        assignment body models.AssignDeviceToLocationRequest true "Assignment details"
+// @Success      204  "No Content"
+// @Failure      400  {object}  models.APIError
+// @Failure      500  {object}  models.APIError
+// @Router       /api/assign-device [post]
 func (h *AdminHandler) AssignDeviceToLocation(writer http.ResponseWriter, request *http.Request) {
 	log.Printf("Received %s request to assign device to location", request.Method)
 
@@ -240,7 +288,15 @@ func (h *AdminHandler) AssignDeviceToLocation(writer http.ResponseWriter, reques
 	writer.WriteHeader(http.StatusNoContent)
 }
 
-// DeleteLocation handles the request to delete a location.
+// DeleteLocation godoc
+// @Summary      Delete location (Admin)
+// @Description  Deletes a location
+// @Tags         admin
+// @Param        locationID path int true "Location ID"
+// @Success      204  "No Content"
+// @Failure      400  {object}  models.APIError
+// @Failure      500  {object}  models.APIError
+// @Router       /api/location/{locationID} [delete]
 func (h *AdminHandler) DeleteLocation(writer http.ResponseWriter, request *http.Request) {
 	log.Printf("Received %s request to delete location", request.Method)
 
@@ -278,7 +334,18 @@ func (h *AdminHandler) DeleteLocation(writer http.ResponseWriter, request *http.
 	writer.WriteHeader(http.StatusNoContent)
 }
 
-// ModifyLocation handles the request to modify a location.
+// ModifyLocation godoc
+// @Summary      Modify location (Admin)
+// @Description  Modifies an existing location
+// @Tags         admin
+// @Accept       json
+// @Produce      json
+// @Param        locationID path int true "Location ID"
+// @Param        location body models.Location true "Location details"
+// @Success      204  "No Content"
+// @Failure      400  {object}  models.APIError
+// @Failure      500  {object}  models.APIError
+// @Router       /api/location/{locationID} [put]
 func (h *AdminHandler) ModifyLocation(writer http.ResponseWriter, request *http.Request) {
 	log.Printf("Received %s request to modify location", request.Method)
 

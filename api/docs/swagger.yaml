@@ -1,0 +1,766 @@
+definitions:
+  CapIot-api_internal_models.APIError:
+    properties:
+      code:
+        allOf:
+        - $ref: '#/definitions/CapIot-api_internal_models.ErrorCode'
+        description: Use the new ErrorCode type
+      details:
+        description: 'Optional: Additional details'
+      message:
+        description: Human-readable error message
+        type: string
+    type: object
+  CapIot-api_internal_models.AssignDeviceToLocationRequest:
+    properties:
+      device_id:
+        type: string
+      location_id:
+        type: integer
+    type: object
+  CapIot-api_internal_models.ErrorCode:
+    enum:
+    - internal_server_error
+    - bad_request
+    - not_found
+    - forbidden
+    - unauthorized
+    - method_not_allowed
+    - invalid_token
+    - token_expired
+    - insufficient_permissions
+    - validation_failed
+    - missing_parameter
+    - invalid_format
+    - unsupported_media_type
+    - resource_not_found
+    - duplicate_resource
+    type: string
+    x-enum-varnames:
+    - ErrorCodeInternalServerError
+    - ErrorCodeBadRequest
+    - ErrorCodeNotFound
+    - ErrorCodeForbidden
+    - ErrorCodeUnauthorized
+    - ErrorCodeMethodNotAllowed
+    - ErrorCodeInvalidToken
+    - ErrorCodeTokenExpired
+    - ErrorCodeInsufficientPermissions
+    - ErrorCodeValidationFailed
+    - ErrorCodeMissingParameter
+    - ErrorCodeInvalidFormat
+    - ErrorCodeUnsupportedMediaType
+    - ErrorCodeResourceNotFound
+    - ErrorCodeDuplicateResource
+  CapIot-api_internal_models.Location:
+    properties:
+      location_description:
+        type: string
+      location_id:
+        type: integer
+      location_name:
+        type: string
+      site_id:
+        type: integer
+    type: object
+  CapIot-api_internal_models.Notification:
+    properties:
+      component_name:
+        description: Component name
+        type: string
+      component_type:
+        description: Component type (sensor, actuator, etc.)
+        type: string
+      location_id:
+        description: Associated location ID
+        type: integer
+      location_name:
+        description: Associated location name
+        type: string
+      log_content:
+        description: Content/message of the log
+        type: string
+      log_id:
+        description: Primary key in component_log table
+        type: integer
+      log_read:
+        description: Whether the notification has been read
+        type: boolean
+      log_timestamp:
+        description: Timestamp of the log
+        type: string
+      log_type:
+        description: Type of log (info, warning, error, etc.)
+        type: string
+      site_id:
+        description: Associated site ID
+        type: integer
+      site_name:
+        description: Associated site name
+        type: string
+    type: object
+  CapIot-api_internal_models.Site:
+    properties:
+      site_address:
+        type: string
+      site_id:
+        type: integer
+      site_name:
+        type: string
+    type: object
+  CapIot-api_internal_models.User:
+    properties:
+      auth0_id:
+        description: Auth0 ID of the user
+        type: string
+      createdAt:
+        description: Timestamp for when the user was created
+        type: string
+      email:
+        description: Email of the user
+        type: string
+      id:
+        description: ID from the database
+        type: integer
+      name:
+        description: Email of the user
+        type: string
+      roles:
+        description: List of roles assigned to the user
+        items:
+          type: string
+        type: array
+    type: object
+info:
+  contact: {}
+paths:
+  /admin/users:
+    get:
+      description: Retrieves a paginated list of all users
+      parameters:
+      - description: Page number
+        in: query
+        name: page
+        type: integer
+      - description: Items per page
+        in: query
+        name: limit
+        type: integer
+      - description: Search term
+        in: query
+        name: search
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+      summary: Get all users
+      tags:
+      - users
+  /admin/users/{userID}:
+    put:
+      consumes:
+      - application/json
+      description: Updates user details and assigned sites
+      parameters:
+      - description: User ID
+        in: path
+        name: userID
+        required: true
+        type: integer
+      - description: Update details
+        in: body
+        name: update
+        required: true
+        schema:
+          properties:
+            name:
+              type: string
+            sites:
+              items:
+                type: integer
+              type: array
+          type: object
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+      summary: Update user and location
+      tags:
+      - users
+  /admin/users/{userID}/sites:
+    get:
+      description: Retrieves sites for a specific user
+      parameters:
+      - description: User ID
+        in: path
+        name: userID
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/CapIot-api_internal_models.Site'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+      summary: Get user sites
+      tags:
+      - users
+  /api/assign-device:
+    post:
+      consumes:
+      - application/json
+      description: Assigns a device to a location
+      parameters:
+      - description: Assignment details
+        in: body
+        name: assignment
+        required: true
+        schema:
+          $ref: '#/definitions/CapIot-api_internal_models.AssignDeviceToLocationRequest'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+      summary: Assign device to location (Admin)
+      tags:
+      - admin
+  /api/assign-user/{userID}:
+    post:
+      consumes:
+      - application/json
+      description: Assigns a user to a specific location
+      parameters:
+      - description: User ID
+        in: path
+        name: userID
+        required: true
+        type: integer
+      - description: Assignment details
+        in: body
+        name: assignment
+        required: true
+        schema:
+          properties:
+            locationID:
+              type: integer
+          type: object
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+      summary: Assign user to location
+      tags:
+      - users
+  /api/devices-components-locations:
+    get:
+      description: Retrieves a paginated list of devices, components, and locations
+        for admin view
+      parameters:
+      - description: Page number
+        in: query
+        name: page
+        type: integer
+      - description: Items per page
+        in: query
+        name: limit
+        type: integer
+      - description: Search term
+        in: query
+        name: search
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+      summary: Get devices, components, and locations (Admin)
+      tags:
+      - admin
+  /api/location/{locationID}:
+    delete:
+      description: Deletes a location
+      parameters:
+      - description: Location ID
+        in: path
+        name: locationID
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+      summary: Delete location (Admin)
+      tags:
+      - admin
+    put:
+      consumes:
+      - application/json
+      description: Modifies an existing location
+      parameters:
+      - description: Location ID
+        in: path
+        name: locationID
+        required: true
+        type: integer
+      - description: Location details
+        in: body
+        name: location
+        required: true
+        schema:
+          $ref: '#/definitions/CapIot-api_internal_models.Location'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+      summary: Modify location (Admin)
+      tags:
+      - admin
+  /api/locations-devices-users:
+    get:
+      description: Retrieves a paginated list of locations, devices, and users for
+        admin view
+      parameters:
+      - description: Page number
+        in: query
+        name: page
+        type: integer
+      - description: Items per page
+        in: query
+        name: limit
+        type: integer
+      - description: Search term
+        in: query
+        name: search
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+      summary: Get locations, devices, and users (Admin)
+      tags:
+      - admin
+  /api/locations/sites/{siteIDs}:
+    get:
+      description: Retrieves locations for multiple sites
+      parameters:
+      - description: Comma-separated Site IDs
+        in: path
+        name: siteIDs
+        required: true
+        type: string
+      - description: Page number
+        in: query
+        name: page
+        type: integer
+      - description: Items per page
+        in: query
+        name: limit
+        type: integer
+      - description: Search term
+        in: query
+        name: search
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+      summary: Get locations by site IDs
+      tags:
+      - locations
+  /api/notifications:
+    get:
+      description: Retrieves a paginated list of notifications for the authenticated
+        user
+      parameters:
+      - description: Page number
+        in: query
+        name: page
+        type: integer
+      - description: Items per page
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/CapIot-api_internal_models.Notification'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+      summary: Get user notifications
+      tags:
+      - notifications
+  /api/notifications/{notificationID}:
+    delete:
+      description: Deletes a specific notification
+      parameters:
+      - description: Notification ID
+        in: path
+        name: notificationID
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+      summary: Delete notification
+      tags:
+      - notifications
+    patch:
+      description: Marks a specific notification as read
+      parameters:
+      - description: Notification ID
+        in: path
+        name: notificationID
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+      summary: Mark notification as read
+      tags:
+      - notifications
+  /api/notifications/delete-all:
+    delete:
+      description: Deletes all notifications for the user
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+      summary: Delete all notifications
+      tags:
+      - notifications
+  /api/notifications/device/{deviceID}:
+    get:
+      description: Retrieves notifications for a specific device
+      parameters:
+      - description: Device ID
+        in: path
+        name: deviceID
+        required: true
+        type: string
+      - description: Page number
+        in: query
+        name: page
+        type: integer
+      - description: Items per page
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/CapIot-api_internal_models.Notification'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+      summary: Get device notifications
+      tags:
+      - notifications
+  /api/notifications/mark-all-read:
+    patch:
+      description: Marks all notifications for the user as read
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+      summary: Mark all notifications as read
+      tags:
+      - notifications
+  /api/sites:
+    get:
+      description: Retrieves a paginated list of sites
+      parameters:
+      - description: Page number
+        in: query
+        name: page
+        type: integer
+      - description: Items per page
+        in: query
+        name: limit
+        type: integer
+      - description: Search term
+        in: query
+        name: search
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+      summary: Get sites with pagination
+      tags:
+      - sites
+  /api/sites/me:
+    get:
+      description: Retrieves sites assigned to the current user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/CapIot-api_internal_models.Site'
+            type: array
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+      summary: Get my sites
+      tags:
+      - users
+  /api/users/me:
+    put:
+      consumes:
+      - application/json
+      description: Updates the username of the current user
+      parameters:
+      - description: New username
+        in: body
+        name: body
+        required: true
+        schema:
+          properties:
+            name:
+              type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.User'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+      summary: Change username
+      tags:
+      - users
+  /api/users/me/locations:
+    get:
+      description: Retrieves all locations assigned to the current user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/CapIot-api_internal_models.Location'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+      summary: Get user locations
+      tags:
+      - users
+  /site/{siteID}:
+    delete:
+      description: Deletes a site by its ID
+      parameters:
+      - description: Site ID
+        in: path
+        name: siteID
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/CapIot-api_internal_models.APIError'
+      summary: Delete site
+      tags:
+      - sites
+swagger: "2.0"

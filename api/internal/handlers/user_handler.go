@@ -7,11 +7,12 @@ import (
 	"CapIot-api/internal/service"
 	"CapIot-api/internal/utils"
 	"encoding/json"
-	"github.com/dgrijalva/jwt-go"
-	"github.com/gorilla/mux"
 	"log"
 	"net/http"
 	"strconv"
+
+	"github.com/dgrijalva/jwt-go"
+	"github.com/gorilla/mux"
 )
 
 type UserHandler struct {
@@ -105,7 +106,17 @@ func (h *UserHandler) UpdateCurrentUser(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
-// AsignUser handles the request to assign a user to a location.
+// AsignUser godoc
+// @Summary      Assign user to location
+// @Description  Assigns a user to a specific location
+// @Tags         users
+// @Accept       json
+// @Param        userID path int true "User ID"
+// @Param        assignment body object{locationID=int} true "Assignment details"
+// @Success      204  "No Content"
+// @Failure      400  {object}  models.APIError
+// @Failure      500  {object}  models.APIError
+// @Router       /api/assign-user/{userID} [post]
 func (h *UserHandler) AsignUser(w http.ResponseWriter, r *http.Request) {
 	// Extract the user ID from the URL parameters
 	vars := mux.Vars(r)
@@ -148,7 +159,14 @@ func (h *UserHandler) AsignUser(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent) // No content response
 }
 
-// GetUserLocations handles the request to retrieve all locations for a user.
+// GetUserLocations godoc
+// @Summary      Get user locations
+// @Description  Retrieves all locations assigned to the current user
+// @Tags         users
+// @Produce      json
+// @Success      200  {array}   models.Location
+// @Failure      500  {object}  models.APIError
+// @Router       /api/users/me/locations [get]
 func (h *UserHandler) GetUserLocations(w http.ResponseWriter, r *http.Request) {
 	// Extract the user ID from the JWT claims
 	userClaims, ok := r.Context().Value(config.UserClaimsContextKey).(jwt.MapClaims)
@@ -181,7 +199,17 @@ func (h *UserHandler) GetUserLocations(w http.ResponseWriter, r *http.Request) {
 	log.Println("GetUserLocations: Successfully returned user locations")
 }
 
-// UpdateUserAndLocation Function to update a user
+// UpdateUserAndLocation godoc
+// @Summary      Update user and location
+// @Description  Updates user details and assigned sites
+// @Tags         users
+// @Accept       json
+// @Param        userID path int true "User ID"
+// @Param        update body object{sites=[]int,name=string} true "Update details"
+// @Success      204  "No Content"
+// @Failure      400  {object}  models.APIError
+// @Failure      500  {object}  models.APIError
+// @Router       /admin/users/{userID} [put]
 func (h *UserHandler) UpdateUserAndLocation(w http.ResponseWriter, r *http.Request) {
 	// Extract the user ID from the URL parameters
 	vars := mux.Vars(r)
@@ -224,6 +252,16 @@ func (h *UserHandler) UpdateUserAndLocation(w http.ResponseWriter, r *http.Reque
 	w.WriteHeader(http.StatusNoContent) // No content response
 }
 
+// GetUserSites godoc
+// @Summary      Get user sites
+// @Description  Retrieves sites for a specific user
+// @Tags         users
+// @Produce      json
+// @Param        userID path int true "User ID"
+// @Success      200  {array}   models.Site
+// @Failure      400  {object}  models.APIError
+// @Failure      500  {object}  models.APIError
+// @Router       /admin/users/{userID}/sites [get]
 func (h *UserHandler) GetUserSites(writer http.ResponseWriter, request *http.Request) {
 	// Extract the user ID from the URL parameters
 	vars := mux.Vars(request)
@@ -260,6 +298,17 @@ func (h *UserHandler) GetUserSites(writer http.ResponseWriter, request *http.Req
 	}
 }
 
+// GetUsers godoc
+// @Summary      Get all users
+// @Description  Retrieves a paginated list of all users
+// @Tags         users
+// @Produce      json
+// @Param        page query int false "Page number"
+// @Param        limit query int false "Items per page"
+// @Param        search query string false "Search term"
+// @Success      200  {object}  map[string]interface{}
+// @Failure      500  {object}  models.APIError
+// @Router       /admin/users [get]
 func (h *UserHandler) GetUsers(writer http.ResponseWriter, request *http.Request) {
 	// Get pagination parameters from query string
 	pageStr := request.URL.Query().Get("page")
@@ -300,6 +349,15 @@ func (h *UserHandler) GetUsers(writer http.ResponseWriter, request *http.Request
 	}
 }
 
+// GetMySites godoc
+// @Summary      Get my sites
+// @Description  Retrieves sites assigned to the current user
+// @Tags         users
+// @Produce      json
+// @Success      200  {array}   models.Site
+// @Failure      405  {object}  models.APIError
+// @Failure      500  {object}  models.APIError
+// @Router       /api/sites/me [get]
 func (h *UserHandler) GetMySites(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
@@ -336,6 +394,17 @@ func (h *UserHandler) GetMySites(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ChangeUsername godoc
+// @Summary      Change username
+// @Description  Updates the username of the current user
+// @Tags         users
+// @Accept       json
+// @Produce      json
+// @Param        body body object{name=string} true "New username"
+// @Success      200  {object}  models.User
+// @Failure      400  {object}  models.APIError
+// @Failure      500  {object}  models.APIError
+// @Router       /api/users/me [put]
 func (h *UserHandler) ChangeUsername(w http.ResponseWriter, r *http.Request) {
 	// Extract the user ID from the URL parameters
 	userClaims, ok := r.Context().Value(config.UserClaimsContextKey).(jwt.MapClaims)

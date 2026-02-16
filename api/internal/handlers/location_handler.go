@@ -5,11 +5,12 @@ import (
 	"CapIot-api/internal/service"
 	"CapIot-api/internal/utils"
 	"encoding/json"
-	"github.com/gorilla/mux"
 	"log"
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/gorilla/mux"
 )
 
 type LocationHandler struct {
@@ -22,6 +23,18 @@ func NewLocationHandler(locationService service.LocationService) *LocationHandle
 	}
 }
 
+// CreateLocation godoc
+// @Summary      Create a new location
+// @Description  Creates a new location with the provided details
+// @Tags         locations
+// @Accept       json
+// @Produce      json
+// @Param        location body models.Location true "Location details"
+// @Success      201  "Location created successfully"
+// @Failure      400  {object}  models.APIError
+// @Failure      415  {object}  models.APIError
+// @Failure      500  {object}  models.APIError
+// @Router       /api/location/create [post]
 func (h *LocationHandler) CreateLocation(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
@@ -68,6 +81,16 @@ func (h *LocationHandler) CreateLocation(w http.ResponseWriter, r *http.Request)
 	w.Write([]byte("Location created successfully"))
 }
 
+// GetComponentsBylocationID godoc
+// @Summary      Get components by location ID
+// @Description  Retrieves all components associated with a specific location
+// @Tags         locations
+// @Produce      json
+// @Param        locationID path int true "Location ID"
+// @Success      200  {array}   models.Component
+// @Failure      400  {object}  models.APIError
+// @Failure      500  {object}  models.APIError
+// @Router       /api/locations/{locationID}/components [get]
 func (h *LocationHandler) GetComponentsBylocationID(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
@@ -93,6 +116,16 @@ func (h *LocationHandler) GetComponentsBylocationID(w http.ResponseWriter, r *ht
 	utils.RespondWithJSON(w, http.StatusOK, components)
 }
 
+// GetDevicesBylocationID godoc
+// @Summary      Get devices by location ID
+// @Description  Retrieves all devices associated with a specific location
+// @Tags         locations
+// @Produce      json
+// @Param        locationID path int true "Location ID"
+// @Success      200  {array}   models.Device
+// @Failure      400  {object}  models.APIError
+// @Failure      500  {object}  models.APIError
+// @Router       /api/location/{locationID}/devices [get]
 func (h *LocationHandler) GetDevicesBylocationID(writer http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodGet {
 		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
@@ -118,6 +151,17 @@ func (h *LocationHandler) GetDevicesBylocationID(writer http.ResponseWriter, req
 	utils.RespondWithJSON(writer, http.StatusOK, devices)
 }
 
+// GetAllLocations godoc
+// @Summary      Get all locations
+// @Description  Retrieves a paginated list of all locations
+// @Tags         locations
+// @Produce      json
+// @Param        page query int false "Page number"
+// @Param        limit query int false "Items per page"
+// @Param        search query string false "Search term"
+// @Success      200  {object}  map[string]interface{}
+// @Failure      500  {object}  models.APIError
+// @Router       /api/locations [get]
 func (h *LocationHandler) GetAllLocations(writer http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodGet {
 		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
@@ -157,6 +201,18 @@ func (h *LocationHandler) GetAllLocations(writer http.ResponseWriter, request *h
 	utils.RespondWithJSON(writer, http.StatusOK, locations)
 }
 
+// CreateSite godoc
+// @Summary      Create a new site
+// @Description  Creates a new site with the provided details
+// @Tags         sites
+// @Accept       json
+// @Produce      json
+// @Param        site body models.Site true "Site details"
+// @Success      201  {object}  models.Site
+// @Failure      400  {object}  models.APIError
+// @Failure      415  {object}  models.APIError
+// @Failure      500  {object}  models.APIError
+// @Router       /site/create [post]
 func (h *LocationHandler) CreateSite(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
@@ -197,7 +253,16 @@ func (h *LocationHandler) CreateSite(w http.ResponseWriter, r *http.Request) {
 	utils.RespondWithJSON(w, http.StatusCreated, createdSite)
 }
 
-// DeleteSite handles DELETE requests to remove a site by its ID.
+// DeleteSite godoc
+// @Summary      Delete site
+// @Description  Deletes a site by its ID
+// @Tags         sites
+// @Param        siteID path int true "Site ID"
+// @Success      204  "No Content"
+// @Failure      400  {object}  models.APIError
+// @Failure      405  {object}  models.APIError
+// @Failure      500  {object}  models.APIError
+// @Router       /site/{siteID} [delete]
 func (h *LocationHandler) DeleteSite(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
 		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
@@ -229,6 +294,18 @@ func (h *LocationHandler) DeleteSite(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent) // 204 No Content
 }
 
+// GetSitesWithPagination godoc
+// @Summary      Get sites with pagination
+// @Description  Retrieves a paginated list of sites
+// @Tags         sites
+// @Produce      json
+// @Param        page query int false "Page number"
+// @Param        limit query int false "Items per page"
+// @Param        search query string false "Search term"
+// @Success      200  {object}  map[string]interface{}
+// @Failure      405  {object}  models.APIError
+// @Failure      500  {object}  models.APIError
+// @Router       /api/sites [get]
 func (h *LocationHandler) GetSitesWithPagination(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
@@ -267,6 +344,21 @@ func (h *LocationHandler) GetSitesWithPagination(w http.ResponseWriter, r *http.
 
 	utils.RespondWithJSON(w, http.StatusOK, sitesData)
 }
+
+// GetLocationsBySiteIDs godoc
+// @Summary      Get locations by site IDs
+// @Description  Retrieves locations for multiple sites
+// @Tags         locations
+// @Produce      json
+// @Param        siteIDs path string true "Comma-separated Site IDs"
+// @Param        page query int false "Page number"
+// @Param        limit query int false "Items per page"
+// @Param        search query string false "Search term"
+// @Success      200  {object}  map[string]interface{}
+// @Failure      400  {object}  models.APIError
+// @Failure      405  {object}  models.APIError
+// @Failure      500  {object}  models.APIError
+// @Router       /api/locations/sites/{siteIDs} [get]
 func (h *LocationHandler) GetLocationsBySiteIDs(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		apiErr := models.NewAPIError(models.ErrorCodeMethodNotAllowed, "Method not allowed", nil, http.StatusMethodNotAllowed)
